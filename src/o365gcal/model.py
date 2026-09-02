@@ -188,7 +188,8 @@ class Config:
     window_future_days: int = 120
     alert_email: str = ""
     dry_run: bool = False
-    title_prefix: str = ""
+    #: "none" is the sentinel for no prefix; see normalize.NO_PREFIX.
+    title_prefix: str = "none"
     privacy_mode: str = "full"  # full | busy-only
     max_mutations_per_run: int = 60
     max_delete_percent: int = 25

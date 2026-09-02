@@ -130,6 +130,13 @@
           "metadata": {
             "schemaName": "o3gc_ListSizeWarnAt"
           }
+        },
+        "NotifyOnChange (o3gc_NotifyOnChange)": {
+          "defaultValue": false,
+          "type": "Bool",
+          "metadata": {
+            "schemaName": "o3gc_NotifyOnChange"
+          }
         }
       },
       "triggers": {
@@ -521,7 +528,7 @@
                     ]
                   },
                   "type": "Compose",
-                  "inputs": "@if(outputs('Compose_Hidden'), 'Busy', trim(concat(coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), ''), coalesce(item()?['subject'], ''))))"
+                  "inputs": "@if(outputs('Compose_Hidden'), 'Busy', trim(concat(if(equals(toLower(trim(coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), 'none'))), 'none'), '', coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), 'none')), coalesce(item()?['subject'], ''))))"
                 },
                 "Compose_Fingerprint": {
                   "runAfter": {
@@ -531,7 +538,7 @@
                   },
                   "type": "Compose",
                   "description": "Fourteen normalised fields joined by US (0x1f), a character Outlook content cannot contain. Field order must match o365gcal.normalize.fingerprint; tests/validate/test_expression_parity.py enforces it. Deliberately excludes lastModifiedDateTime, which",
-                  "inputs": "@concat(if(outputs('Compose_Hidden'), 'Busy', trim(concat(coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), ''), coalesce(item()?['subject'], '')))), decodeUriComponent('%1F'), formatDateTime(item()?['startWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'), decodeUriComponent('%1F'), formatDateTime(item()?['endWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'), decodeUriComponent('%1F'), if(coalesce(item()?['isAllDay'], false), '1', '0'), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', trim(coalesce(item()?['location'], ''))), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', concat(string(length(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' ')))), ':', substring(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' ')), 0, min(256, length(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' '))))))), decodeUriComponent('%1F'), toLower(trim(coalesce(item()?['showAs'], 'busy'))), decodeUriComponent('%1F'), coalesce(item()?['sensitivity'], 'normal'), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', toLower(concat(trim(coalesce(item()?['requiredAttendees'], '')), ';', trim(coalesce(item()?['optionalAttendees'], ''))))), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', toLower(trim(coalesce(item()?['organizer'], '')))), decodeUriComponent('%1F'), coalesce(item()?['responseType'], 'none'), decodeUriComponent('%1F'), parameters('PrivacyMode (o3gc_PrivacyMode)'))"
+                  "inputs": "@concat(if(outputs('Compose_Hidden'), 'Busy', trim(concat(if(equals(toLower(trim(coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), 'none'))), 'none'), '', coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), 'none')), coalesce(item()?['subject'], '')))), decodeUriComponent('%1F'), formatDateTime(item()?['startWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'), decodeUriComponent('%1F'), formatDateTime(item()?['endWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'), decodeUriComponent('%1F'), if(coalesce(item()?['isAllDay'], false), '1', '0'), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', trim(coalesce(item()?['location'], ''))), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', concat(string(length(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' ')))), ':', substring(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' ')), 0, min(256, length(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' '))))))), decodeUriComponent('%1F'), toLower(trim(coalesce(item()?['showAs'], 'busy'))), decodeUriComponent('%1F'), coalesce(item()?['sensitivity'], 'normal'), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', toLower(concat(trim(coalesce(item()?['requiredAttendees'], '')), ';', trim(coalesce(item()?['optionalAttendees'], ''))))), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', toLower(trim(coalesce(item()?['organizer'], '')))), decodeUriComponent('%1F'), coalesce(item()?['responseType'], 'none'), decodeUriComponent('%1F'), parameters('PrivacyMode (o3gc_PrivacyMode)'))"
                 },
                 "Compose_Description": {
                   "runAfter": {
@@ -629,6 +636,23 @@
                       "inputs": {
                         "name": "Applied",
                         "value": "@outputs('Compose_Key')"
+                      }
+                    },
+                    "Record_Change": {
+                      "runAfter": {
+                        "Count_Applied": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "AppendToArrayVariable",
+                      "description": "Recorded after the write is counted, so the notification lists what was attempted this run even if a single event failed.",
+                      "inputs": {
+                        "name": "Changes",
+                        "value": {
+                          "operation": "@outputs('Decide')",
+                          "subject": "@outputs('Compose_Subject')",
+                          "startsAt": "@item()?['startWithTimeZone']"
+                        }
                       }
                     }
                   },
@@ -815,6 +839,22 @@
                               "name": "Applied",
                               "value": "@items('For_Each_Delete')?['Title']"
                             }
+                          },
+                          "Record_Delete": {
+                            "runAfter": {
+                              "Count_Applied_Delete": [
+                                "Succeeded"
+                              ]
+                            },
+                            "type": "AppendToArrayVariable",
+                            "inputs": {
+                              "name": "Changes",
+                              "value": {
+                                "operation": "Delete",
+                                "subject": "@items('For_Each_Delete')?['Title']",
+                                "startsAt": "@items('For_Each_Delete')?['OccurrenceStartUtc']"
+                              }
+                            }
                           }
                         },
                         "else": {
@@ -863,7 +903,7 @@
             },
             "Stamp_Health": {
               "runAfter": {
-                "Log_Run_Summary": [
+                "Notify_Changes": [
                   "Succeeded"
                 ]
               },
@@ -993,12 +1033,71 @@
                   "Succeeded"
                 ]
               }
+            },
+            "Select_Changes_Html": {
+              "runAfter": {
+                "Log_Run_Summary": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Select",
+              "inputs": {
+                "from": "@variables('Changes')",
+                "select": "@concat('<li><b>', item()?['operation'], '</b> - ', coalesce(item()?['subject'], ''), ' (', coalesce(item()?['startsAt'], ''), ')</li>')"
+              }
+            },
+            "Notify_Changes": {
+              "runAfter": {
+                "Select_Changes_Html": [
+                  "Succeeded"
+                ]
+              },
+              "type": "If",
+              "description": "Only when something actually changed. A notification that fires on every quiet run is the fastest way to teach someone to filter these emails away.",
+              "expression": {
+                "and": [
+                  {
+                    "equals": [
+                      "@parameters('NotifyOnChange (o3gc_NotifyOnChange)')",
+                      true
+                    ]
+                  },
+                  {
+                    "greater": [
+                      "@length(variables('Changes'))",
+                      0
+                    ]
+                  }
+                ]
+              },
+              "actions": {
+                "Send_Change_Notice": {
+                  "runAfter": {},
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_office365",
+                      "operationId": "SendEmailV2",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+                    },
+                    "parameters": {
+                      "emailMessage/To": "@parameters('AlertEmail (o3gc_AlertEmail)')",
+                      "emailMessage/Subject": "@{concat('O365GCal: ', string(length(variables('Changes'))), ' calendar change(s) mirrored')}",
+                      "emailMessage/Body": "<h3>Mirrored just now</h3><ul>@{join(body('Select_Changes_Html'), '')}</ul><p>Outlook events in the window: @{outputs('Guard_Outlook_Read')}. Mirrored events tracked: @{length(variables('ActiveRows'))}.@{if(greater(variables('Deferred'), 0), concat(' Deferred to the next run: ', string(variables('Deferred')), '.'), '')}</p><p>Turn this off by setting NotifyOnChange to no; the daily digest covers the same ground once a day.</p>",
+                      "emailMessage/Importance": "Low"
+                    }
+                  }
+                }
+              },
+              "else": {
+                "actions": {}
+              }
             }
           }
         },
         "Get_Health_Row": {
           "runAfter": {
-            "Init_Deferred": [
+            "Init_Changes": [
               "Succeeded"
             ]
           },
@@ -1077,6 +1176,23 @@
                 }
               }
             }
+          }
+        },
+        "Init_Changes": {
+          "runAfter": {
+            "Init_Deferred": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Changes",
+                "type": "array",
+                "value": []
+              }
+            ]
           }
         }
       },

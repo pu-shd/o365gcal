@@ -106,7 +106,11 @@ ZIP="$DIST_DIR/${SOLUTION_NAME}_${KIND}.zip"
 
 if (( NONINTERACTIVE )); then
   [[ -f "$SETTINGS_FILE" ]] || die "settings file not found: $SETTINGS_FILE"
-  ok "using $SETTINGS_FILE"
+  info "Reconciling $SETTINGS_FILE against this solution's variables"
+  RECONCILED="$(mktemp -t o365gcal-settings)"
+  reconcile_settings "$SETTINGS_FILE" "$ZIP" "$RECONCILED"
+  SETTINGS_FILE="$RECONCILED"
+  ok "settings reconciled"
 else
   TEMPLATE="$(mktemp -t o365gcal-settings)"
   pac solution create-settings --solution-zip "$ZIP" --settings-file "$TEMPLATE" >/dev/null

@@ -183,7 +183,10 @@ def _hide(expr: str) -> str:
 
 FLOW_FINGERPRINT_PARTS: dict[str, str] = {
     "effectiveSubject": (
-        f"if({HIDDEN}, 'Busy', trim(concat({env_or('TitlePrefix')}, coalesce(item()?['subject'], ''))))"
+        f"if({HIDDEN}, 'Busy', trim(concat("
+        f"if(equals(toLower(trim({env_or('TitlePrefix', chr(39) + 'none' + chr(39))})), 'none'), '', "
+        f"{env_or('TitlePrefix', chr(39) + 'none' + chr(39))}), "
+        f"coalesce(item()?['subject'], ''))))"
     ),
     "startUtc": iso_utc("item()?['startWithTimeZone']"),
     "endUtc": iso_utc("item()?['endWithTimeZone']"),

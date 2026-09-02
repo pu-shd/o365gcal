@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{b24bf5e6-8164-5ad0-9193-a20c6ecaeb76}" schemaname="o3gc_NotifyOnChange">
+  <displayname>NotifyOnChange</displayname>
+  <description>Email a summary after any reconcile that changed something, naming each event added, updated or removed. Silent when a run changes nothing, so it does not become noise. Off by default; the daily digest covers the same ground once a day.</description>
+  <type>100000002</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>no</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

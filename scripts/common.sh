@@ -188,3 +188,61 @@ except Exception:
 PY
   rm -rf "$tmp"
 }
+
+# reconcile_settings <provided-settings> <solution-zip> <out>
+#
+# A saved settings file goes stale the moment the solution's variable set changes: an
+# entry naming a variable the solution no longer declares fails the whole import with
+# "some references included in the solution are not present in the organization". So
+# the provided values are re-projected onto the variables the solution actually has.
+reconcile_settings() {
+  local provided="$1" zip="$2" out="$3" template
+  template="$(mktemp -t o365gcal-template)"
+  pac solution create-settings --solution-zip "$zip" --settings-file "$template" >/dev/null 2>&1 \
+    || die "could not read the solution's settings template"
+
+  local py="python3"
+  [[ -x "$REPO_ROOT/.venv/bin/python" ]] && py="$REPO_ROOT/.venv/bin/python"
+  "$py" - "$template" "$provided" "$out" <<'PY'
+import json, sys
+
+template, provided, out = sys.argv[1:4]
+tmpl = json.load(open(template))
+have = json.load(open(provided))
+
+values = {e["SchemaName"]: e.get("Value") for e in have.get("EnvironmentVariables", [])}
+conns = {c["LogicalName"]: c.get("ConnectionId")
+         for c in have.get("ConnectionReferences", [])}
+
+kept, dropped, missing = [], [], []
+for ev in tmpl["EnvironmentVariables"]:
+    name = ev["SchemaName"]
+    value = values.get(name)
+    if value is None:
+        value = ev.get("DefaultValue") or ""
+        if str(value).strip():
+            missing.append(name)
+    # An entry with an empty Value is rejected outright, so blanks are omitted and
+    # left to the definition's own default.
+    if str(value).strip():
+        ev["Value"] = value
+        kept.append(ev)
+
+for name in values:
+    if name not in {e["SchemaName"] for e in tmpl["EnvironmentVariables"]}:
+        dropped.append(name)
+
+tmpl["EnvironmentVariables"] = kept
+for cr in tmpl.get("ConnectionReferences", []):
+    if conns.get(cr["LogicalName"]):
+        cr["ConnectionId"] = conns[cr["LogicalName"]]
+
+json.dump(tmpl, open(out, "w"), indent=2)
+if dropped:
+    print("  dropped (no longer in the solution): " + ", ".join(sorted(dropped)))
+if missing:
+    print("  taking the solution default for: " + ", ".join(sorted(missing)))
+print(f"  {len(kept)} variable(s), {len(tmpl.get('ConnectionReferences', []))} connection reference(s)")
+PY
+  rm -f "$template"
+}

@@ -117,11 +117,23 @@ def correlation_key(ical_uid: str, occurrence_start: datetime) -> str:
     return f"{ical_uid}|{iso_utc(occurrence_start)}"
 
 
+#: TitlePrefix sentinel meaning "no prefix". An empty default cannot be resolved by
+#: the runtime at all, and a whitespace-only one is normalised away on import, so the
+#: absence of a prefix has to be spelled out.
+NO_PREFIX = "none"
+
+
+def title_prefix(config: Config) -> str:
+    """The configured prefix, with the sentinel mapped to nothing."""
+    prefix = config.title_prefix or ""
+    return "" if prefix.strip().lower() == NO_PREFIX else prefix
+
+
 def effective_subject(event: OutlookEvent, config: Config) -> str:
     """Subject as it should appear on Google, honouring privacy and title prefix."""
     if _is_hidden(event, config):
         return "Busy"
-    return f"{config.title_prefix}{event.subject}".strip()
+    return f"{title_prefix(config)}{event.subject}".strip()
 
 
 def _is_hidden(event: OutlookEvent, config: Config) -> bool:

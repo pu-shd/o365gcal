@@ -111,7 +111,12 @@ json.dump(tmpl, open(sys.argv[4], "w"), indent=2)
 print(f"  wrote {sys.argv[4]} ({len(kept)} variables)")
 PY
 fi
-ok "using $SETTINGS"
+
+info "Reconciling settings against the new solution version"
+RECONCILED="$TMP/settings.json"
+reconcile_settings "$SETTINGS" "$DIST_DIR/${SOLUTION_NAME}_managed.zip" "$RECONCILED"
+SETTINGS="$RECONCILED"
+ok "settings reconciled"
 
 print ""
 confirm "Proceed with the upgrade?" || { info "Aborted. Nothing changed."; exit 0 }

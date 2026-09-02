@@ -121,6 +121,7 @@
       <RootComponent type="380" schemaName="o3gc_MapRetentionDays" behavior="0" />
       <RootComponent type="380" schemaName="o3gc_DeletedRowRetentionDays" behavior="0" />
       <RootComponent type="380" schemaName="o3gc_ListSizeWarnAt" behavior="0" />
+      <RootComponent type="380" schemaName="o3gc_NotifyOnChange" behavior="0" />
     </RootComponents>
     <MissingDependencies />
   </SolutionManifest>

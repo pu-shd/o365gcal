@@ -165,3 +165,25 @@ def test_fingerprint_uses_unit_separator(config, event):
     from o365gcal.normalize import fingerprint
 
     assert "\x1f" in fingerprint(event, config)
+
+
+def test_title_prefix_sentinel_means_no_prefix(config, event):
+    """An empty default cannot be resolved by the runtime, and a whitespace-only one is
+    normalised away on import - a fresh install failed twice on exactly that. So the
+    absence of a prefix is spelled out, and both the engine and the flow map the
+    sentinel to nothing."""
+    from o365gcal.normalize import NO_PREFIX, effective_subject
+
+    config.title_prefix = NO_PREFIX
+    assert effective_subject(event, config) == event.subject
+    config.title_prefix = "NONE"
+    assert effective_subject(event, config) == event.subject, "case-insensitive"
+    config.title_prefix = "[Outlook] "
+    assert effective_subject(event, config) == f"[Outlook] {event.subject}"
+
+
+def test_default_config_applies_no_prefix(event):
+    from o365gcal.model import Config
+    from o365gcal.normalize import effective_subject
+
+    assert effective_subject(event, Config()) == event.subject

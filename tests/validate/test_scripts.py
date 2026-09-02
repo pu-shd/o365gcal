@@ -240,3 +240,28 @@ def test_no_absence_claimed_from_a_failed_read(script):
     )
     for overreach in ("no personal site found", "NOT PRESENT"):
         assert overreach not in code, f"{script} asserts absence from a failed read"
+
+
+def test_bootstrap_reconciles_a_saved_settings_file():
+    """A saved settings file goes stale the moment the solution's variable set changes.
+    An entry naming a variable the solution no longer declares fails the entire import
+    with "some references included in the solution are not present in the
+    organization" - which is what happened on the first reinstall after a variable was
+    removed."""
+    text = (ROOT / "scripts" / "bootstrap.sh").read_text()
+    assert "reconcile_settings" in text
+    assert text.index("reconcile_settings") < text.index("pac solution import")
+
+
+def test_update_reconciles_settings_too():
+    text = (ROOT / "scripts" / "update.sh").read_text()
+    assert "reconcile_settings" in text
+    assert text.index("reconcile_settings") < text.index("pac solution import")
+
+
+def test_reconcile_drops_unknown_variables_and_reports_them():
+    """Silently dropping configuration would be worse than failing: the installer
+    should know a value they set is no longer used."""
+    text = (ROOT / "scripts" / "common.sh").read_text()
+    assert "dropped (no longer in the solution)" in text
+    assert "taking the solution default for" in text

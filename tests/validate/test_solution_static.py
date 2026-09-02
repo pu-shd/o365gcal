@@ -331,6 +331,8 @@ NON_CALENDAR_FIELDS = {
     "id", "htmlLink", "items", "summary",
     # Health-row fields, and the seed literal flow 0 iterates.
     "StaleAfterMinutes", "AffectsSync", "name", "stale", "affects",
+    # Fields of the Changes array the reconciler builds for its notification.
+    "operation", "startsAt",
 }
 
 #: Banned outright, with the reason, so the failure explains itself.
@@ -938,3 +940,47 @@ def test_watchdog_advice_matches_what_is_actually_broken():
     assert body.count("Connection_Broken") >= 2, (
         "impact and advice must both be conditional on the probe result"
     )
+
+
+def test_no_environment_variable_defaults_to_whitespace():
+    """A whitespace-only default is normalised away on import, leaving the variable
+    unresolvable and every flow referencing it unable to activate. It failed that way
+    twice: first as an empty string, then as a single space."""
+    from o365gcal.envvars import CATALOGUE
+
+    for var in CATALOGUE:
+        if var.required_at_install:
+            continue
+        assert var.default.strip() == var.default and var.default.strip(), (
+            f"{var.name}: default {var.default!r} is empty or whitespace-only; use an "
+            f"explicit sentinel the flow maps to nothing"
+        )
+
+
+def test_change_notification_is_silent_when_nothing_changed():
+    """A notification that fires on every quiet run is the fastest way to teach
+    someone to filter these emails away - which is how the watchdog's own alerts
+    became noise earlier."""
+    path = next(p for p in WORKFLOWS if "3-Reconcile" in p.name)
+    notify = definition(path)["actions"]["Try_Reconcile"]["actions"]["Notify_Changes"]
+    conditions = notify["expression"]["and"]
+    assert {"greater": ["@length(variables('Changes'))", 0]} in conditions, (
+        "must require at least one actual change"
+    )
+    assert any("NotifyOnChange" in json.dumps(c) for c in conditions), (
+        "must be opt-in"
+    )
+
+
+def test_change_notification_defaults_off():
+    from o365gcal.envvars import BY_SCHEMA
+
+    assert BY_SCHEMA["o3gc_NotifyOnChange"].default == "no"
+
+
+def test_health_stamp_still_runs_after_notification():
+    """The heartbeat must not be skipped just because a notification was added in
+    front of it - a missed stamp reads as a dead flow."""
+    path = next(p for p in WORKFLOWS if "3-Reconcile" in p.name)
+    T = definition(path)["actions"]["Try_Reconcile"]["actions"]
+    assert "Notify_Changes" in T["Stamp_Health"]["runAfter"]

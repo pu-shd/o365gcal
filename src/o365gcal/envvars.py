@@ -70,15 +70,16 @@ CATALOGUE: list[EnvVar] = [
            required_at_install=True),
     EnvVar("DryRun", BOOLEAN, "no",
            "When on, flows log every intended change but perform no Google writes. Use for the first run."),
-    # The default is a single space, not an empty string, and that is deliberate.
-    # A variable whose value AND default are both empty cannot be resolved at all:
-    # every flow referencing it fails to activate with
-    # XrmEnvironmentVariableAttributeNotFound. A space resolves cleanly and is then
-    # removed by the trim() that already wraps the title, so the effective default is
-    # still "no prefix".
-    EnvVar("TitlePrefix", STRING, " ",
-           "Prefix for mirrored event titles, e.g. '[Outlook] '. A single space means "
-           "no prefix; leading and trailing space is trimmed."),
+    # The default is the literal word "none", not an empty string and not a space.
+    # A variable with neither a value nor a default cannot be resolved at all - every
+    # flow referencing it fails to activate with
+    # XrmEnvironmentVariableAttributeNotFound. A single space looked like a neat way
+    # round that and is not: whitespace-only XML text is normalised away on import, so
+    # the default became empty again and a fresh install failed the same way. A
+    # sentinel survives, and both the engine and the flow map it to no prefix.
+    EnvVar("TitlePrefix", STRING, "none",
+           "Prefix for mirrored event titles, e.g. '[Outlook] '. The literal word "
+           "'none' means no prefix."),
     EnvVar("PrivacyMode", STRING, "full",
            "'full' mirrors all details. 'busy-only' mirrors private and confidential events as an opaque 'Busy' block with no subject, location or attendees."),
     EnvVar("MaxMutationsPerRun", NUMBER, "60",
@@ -91,6 +92,11 @@ CATALOGUE: list[EnvVar] = [
            "Watchdog threshold. Alerts if a flow has not recorded a successful run within this many minutes."),
     EnvVar("LogRetentionDays", NUMBER, "90",
            "Audit log rows older than this are pruned by the watchdog."),
+    EnvVar("NotifyOnChange", BOOLEAN, "no",
+           "Email a summary after any reconcile that changed something, naming each "
+           "event added, updated or removed. Silent when a run changes nothing, so it "
+           "does not become noise. Off by default; the daily digest covers the same "
+           "ground once a day."),
     EnvVar("MapRetentionDays", NUMBER, "400",
            "How long a sync-map row is kept after its occurrence leaves the sync window. "
            "Pruning a row makes the automation forget it created that Google event, so this "
