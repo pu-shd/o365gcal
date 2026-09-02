@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{c51502eb-4506-58a0-b96c-dd7e40659692}" schemaname="o3gc_BackupRetentionCount">
+  <displayname>BackupRetentionCount</displayname>
+  <description>How many backup folders to keep. Older ones are removed by flow 6 after a successful backup, newest first.</description>
+  <type>100000001</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>8</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{624e453e-79f5-5c7b-86e1-69a58c05ea6c}" schemaname="o3gc_BackupFolderName">
+  <displayname>BackupFolderName</displayname>
+  <description>Folder in the state site's document library where flow 6 writes backups. On a OneDrive-backed site this appears in your own Files.</description>
+  <type>100000000</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>O365GCal-Backups</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{12246a88-aa2c-570f-9fd0-af6ae036863f}" schemaname="o3gc_DeletedRowRetentionDays">
+  <displayname>DeletedRowRetentionDays</displayname>
+  <description>How long to keep a row recording that an event was withdrawn from Google. It points at nothing, so it is only a short audit trail.</description>
+  <type>100000001</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>30</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

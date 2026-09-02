@@ -1,0 +1,615 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_office365": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "o3gc_sharedoffice365"
+        },
+        "api": {
+          "name": "shared_office365"
+        }
+      },
+      "shared_googlecalendar": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "o3gc_sharedgooglecalendar"
+        },
+        "api": {
+          "name": "shared_googlecalendar"
+        }
+      },
+      "shared_sharepointonline": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "o3gc_sharedsharepointonline"
+        },
+        "api": {
+          "name": "shared_sharepointonline"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "description": "Hourly health check. Probes both connections live and alerts on any flow that has stopped recording successful runs. This catches the failures no in-flow error handler can see - an expired Google consent, a flow switched off, a flow suspended by the platform - because those produce silence rather than a failed run. A watchdog cannot report its own death, so docs/ADMIN.md also covers enabling Power Platform's built-in flow failure notifications as an independent second layer.",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "StateSiteUrl (o3gc_StateSiteUrl)": {
+          "defaultValue": "",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_StateSiteUrl"
+          }
+        },
+        "LogListName (o3gc_LogListName)": {
+          "defaultValue": "O365GCalLog",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_LogListName"
+          }
+        },
+        "HealthListName (o3gc_HealthListName)": {
+          "defaultValue": "O365GCalHealth",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_HealthListName"
+          }
+        },
+        "AlertEmail (o3gc_AlertEmail)": {
+          "defaultValue": "",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_AlertEmail"
+          }
+        },
+        "HeartbeatStaleMinutes (o3gc_HeartbeatStaleMinutes)": {
+          "defaultValue": 90,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_HeartbeatStaleMinutes"
+          }
+        },
+        "LogRetentionDays (o3gc_LogRetentionDays)": {
+          "defaultValue": 90,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_LogRetentionDays"
+          }
+        },
+        "StateListName (o3gc_StateListName)": {
+          "defaultValue": "O365GCalSyncMap",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_StateListName"
+          }
+        },
+        "MapRetentionDays (o3gc_MapRetentionDays)": {
+          "defaultValue": 400,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_MapRetentionDays"
+          }
+        },
+        "DeletedRowRetentionDays (o3gc_DeletedRowRetentionDays)": {
+          "defaultValue": 30,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_DeletedRowRetentionDays"
+          }
+        },
+        "ListSizeWarnAt (o3gc_ListSizeWarnAt)": {
+          "defaultValue": 4000,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_ListSizeWarnAt"
+          }
+        },
+        "WindowPastDays (o3gc_WindowPastDays)": {
+          "defaultValue": 7,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_WindowPastDays"
+          }
+        }
+      },
+      "triggers": {
+        "Every_hour": {
+          "type": "Recurrence",
+          "recurrence": {
+            "frequency": "Hour",
+            "interval": 1
+          },
+          "metadata": {
+            "operationMetadataId": "9c1f4a20-3b77-4e51-9a3d-000000000006"
+          }
+        }
+      },
+      "actions": {
+        "Get_Health": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "GET",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items?$select=Id,Title,LastSuccessUtc,LastRunStatus,ConsecutiveFailures,StaleAfterMinutes,AffectsSync&$top=100')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata"
+              }
+            }
+          },
+          "runAfter": {
+            "Scope_Probe_Google": [
+              "Succeeded",
+              "Failed",
+              "TimedOut",
+              "Skipped"
+            ]
+          }
+        },
+        "Stale_Flows": {
+          "runAfter": {
+            "Filter_Sync_Affecting": [
+              "Succeeded"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "@body('Filter_Stale')"
+        },
+        "Connection_Broken": {
+          "runAfter": {
+            "Select_Stale_Html": [
+              "Succeeded"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "@or(not(equals(result('Scope_Probe_Outlook')[0]?['status'], 'Succeeded')), not(equals(result('Scope_Probe_Google')[0]?['status'], 'Succeeded')))"
+        },
+        "Alert_If_Broken": {
+          "runAfter": {
+            "Connection_Broken": [
+              "Succeeded"
+            ]
+          },
+          "type": "If",
+          "expression": {
+            "or": [
+              {
+                "greater": [
+                  "@length(outputs('Stale_Flows'))",
+                  0
+                ]
+              },
+              {
+                "equals": [
+                  "@outputs('Connection_Broken')",
+                  true
+                ]
+              }
+            ]
+          },
+          "actions": {
+            "Send_Breakage_Alert": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_office365",
+                  "operationId": "SendEmailV2",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+                },
+                "parameters": {
+                  "emailMessage/To": "@parameters('AlertEmail (o3gc_AlertEmail)')",
+                  "emailMessage/Subject": "@{if(or(greater(length(body('Filter_Sync_Affecting')), 0), equals(outputs('Connection_Broken'), true)), 'O365GCal: syncing has stopped - action needed', 'O365GCal: a supporting flow is running late')}",
+                  "emailMessage/Body": "<h3>O365GCal health report</h3><p><b>Connections</b><br>Office 365 Outlook: @{if(equals(result('Scope_Probe_Outlook')[0]?['status'], 'Succeeded'), 'OK', 'FAILING - reauthorise this connection')}<br>Google Calendar: @{if(equals(result('Scope_Probe_Google')[0]?['status'], 'Succeeded'), 'OK', 'FAILING - reauthorise this connection')}</p>@{if(or(greater(length(body('Filter_Sync_Affecting')), 0), equals(outputs('Connection_Broken'), true)),'<p style=\"color:#b00\"><b>Your Google calendar is going stale.</b> New Outlook meetings are not appearing and cancelled ones are not being removed.</p>','<p><b>Your calendar is still syncing normally.</b> The reconciler - the flow that actually mirrors your calendar - is healthy. What follows is a supporting flow running late.</p>')}<p><b>Flows past their own staleness threshold</b></p><ul>@{join(body('Select_Stale_Html'), '')}</ul><p>Thresholds differ per flow: the reconciler runs every 30 minutes, the digest and backup once a day.</p>@{if(equals(outputs('Connection_Broken'), true), '<p><b>Fix:</b> open make.powerautomate.com &gt; Connections and reauthorise the connection marked failing above.</p>', '<p><b>Fix:</b> both connections are healthy, so check the listed flows are switched on in make.powerautomate.com &gt; Solutions &gt; O365GCal. If they are on, look at their run history for the failure.</p>')}",
+                  "emailMessage/Importance": "High"
+                }
+              },
+              "runAfter": {}
+            }
+          },
+          "else": {
+            "actions": {}
+          }
+        },
+        "Prune_Old_Logs": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "GET",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('LogListName (o3gc_LogListName)'), ''')/items?$select=Id&$filter=Timestamp lt datetime''', formatDateTime(addDays(utcNow(), mul(-1, int(parameters('LogRetentionDays (o3gc_LogRetentionDays)')))), 'yyyy-MM-ddTHH:mm:ss'), '''&$top=200')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata"
+              }
+            }
+          },
+          "runAfter": {
+            "Delete_Stale_Rows": [
+              "Succeeded"
+            ]
+          },
+          "description": "Bounded at 200 per run so the audit list cannot grow without limit, and cannot stall the watchdog either."
+        },
+        "Delete_Old_Logs": {
+          "runAfter": {
+            "Prune_Old_Logs": [
+              "Succeeded"
+            ]
+          },
+          "type": "Foreach",
+          "foreach": "@coalesce(body('Prune_Old_Logs')?['value'], json('[]'))",
+          "runtimeConfiguration": {
+            "concurrency": {
+              "repetitions": 4
+            }
+          },
+          "actions": {
+            "Delete_Log_Row": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "HttpRequest",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                  "parameters/method": "POST",
+                  "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('LogListName (o3gc_LogListName)'), ''')/items(', string(item()?['Id']), ')')}",
+                  "parameters/headers": {
+                    "Accept": "application/json;odata=nometadata",
+                    "X-HTTP-Method": "DELETE",
+                    "IF-MATCH": "*"
+                  }
+                }
+              },
+              "runAfter": {}
+            }
+          }
+        },
+        "Get_Own_Health": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "GET",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items?$select=Id&$filter=Title eq ''5 Watchdog''&$top=1')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata"
+              }
+            }
+          },
+          "runAfter": {
+            "Delete_Old_Logs": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Stamp_Own_Health": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items(', string(first(body('Get_Own_Health')?['value'])?['Id']), ')')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata",
+                "X-HTTP-Method": "MERGE",
+                "IF-MATCH": "*"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(json('{}'), 'LastSuccessUtc', utcNow()), 'LastRunUtc', utcNow()), 'LastRunStatus', 'Succeeded')"
+            }
+          },
+          "runAfter": {
+            "Get_Own_Health": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Scope_Probe_Outlook": {
+          "runAfter": {},
+          "type": "Scope",
+          "description": "Wrapped in a scope purely so result() can read its outcome: result() accepts only scope-type actions, and pointing it at a connector action fails template validation at activation time.",
+          "actions": {
+            "Probe_Outlook": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "description": "Cheapest possible live call. An expired OAuth consent produces no failed run for any in-flow handler to catch, so it has to be probed for deliberately.",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_office365",
+                  "operationId": "CalendarGetTables_V2",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+                },
+                "parameters": {}
+              }
+            }
+          }
+        },
+        "Scope_Probe_Google": {
+          "runAfter": {
+            "Scope_Probe_Outlook": [
+              "Succeeded",
+              "Failed",
+              "TimedOut",
+              "Skipped"
+            ]
+          },
+          "type": "Scope",
+          "description": "Google refresh tokens are revoked by password changes and by Google's own inactivity policy. This is the most common real-world breakage of the whole solution and produces no failed run for any in-flow handler to catch.",
+          "actions": {
+            "Probe_Google": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "description": "Google refresh tokens are revoked by password changes and by Google's own inactivity policy. This is the most common real-world breakage of the whole solution.",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_googlecalendar",
+                  "operationId": "ListCalendars",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_googlecalendar"
+                },
+                "parameters": {
+                  "minAccessRole": "writer"
+                }
+              }
+            }
+          }
+        },
+        "Get_Map_Size": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "GET",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('StateListName (o3gc_StateListName)'), ''')/ItemCount')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata"
+              }
+            }
+          },
+          "runAfter": {
+            "Alert_If_Broken": [
+              "Succeeded"
+            ]
+          },
+          "description": "ItemCount is a cheap property read, so list size can be checked without pulling rows - and it reports the true count rather than a capped page."
+        },
+        "Check_List_Size": {
+          "runAfter": {
+            "Get_Map_Size": [
+              "Succeeded",
+              "Failed"
+            ]
+          },
+          "type": "If",
+          "description": "Warns before reads begin truncating. Past 5000 rows a capped read looks identical to a complete one, which is how a large calendar quietly duplicates itself.",
+          "expression": {
+            "greaterOrEquals": [
+              "@int(coalesce(body('Get_Map_Size')?['value'], 0))",
+              "@int(parameters('ListSizeWarnAt (o3gc_ListSizeWarnAt)'))"
+            ]
+          },
+          "actions": {
+            "Alert_List_Size": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_office365",
+                  "operationId": "SendEmailV2",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+                },
+                "parameters": {
+                  "emailMessage/To": "@parameters('AlertEmail (o3gc_AlertEmail)')",
+                  "emailMessage/Subject": "O365GCal: bookkeeping list is getting large",
+                  "emailMessage/Body": "<p>The sync map holds <b>@{coalesce(body('Get_Map_Size')?['value'], 0)}</b> rows, approaching SharePoint's 5000-row read limit.</p><p>Nothing is broken yet. Past that limit a read returns only the first 5000 rows without saying so, and syncing pauses rather than risk duplicating events.</p><p>Pruning runs daily. If the list keeps growing, reduce WindowFutureDays or MapRetentionDays.</p>",
+                  "emailMessage/Importance": "Normal"
+                }
+              }
+            }
+          },
+          "else": {
+            "actions": {}
+          }
+        },
+        "Find_Settled_Deletions": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "GET",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('StateListName (o3gc_StateListName)'), ''')/items?$select=Id&$filter=SyncState eq ''Deleted'' and LastSyncedUtc lt datetime''', formatDateTime(addDays(utcNow(), mul(-1, int(parameters('DeletedRowRetentionDays (o3gc_DeletedRowRetentionDays)')))), 'yyyy-MM-ddTHH:mm:ss'), '''&$top=200')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata"
+              }
+            }
+          },
+          "runAfter": {
+            "Check_List_Size": [
+              "Succeeded"
+            ]
+          },
+          "description": "Rows recording a withdrawal have no Google event left to point at, so removing them loses nothing but a short audit trail."
+        },
+        "Delete_Settled_Deletions": {
+          "runAfter": {
+            "Find_Settled_Deletions": [
+              "Succeeded",
+              "Failed"
+            ]
+          },
+          "type": "Foreach",
+          "foreach": "@coalesce(body('Find_Settled_Deletions')?['value'], json('[]'))",
+          "runtimeConfiguration": {
+            "concurrency": {
+              "repetitions": 4
+            }
+          },
+          "actions": {
+            "Delete_Row": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "HttpRequest",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                  "parameters/method": "POST",
+                  "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('StateListName (o3gc_StateListName)'), ''')/items(', string(item()?['Id']), ')')}",
+                  "parameters/headers": {
+                    "Accept": "application/json;odata=nometadata",
+                    "X-HTTP-Method": "DELETE",
+                    "IF-MATCH": "*"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "Find_Stale_Rows": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "GET",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('StateListName (o3gc_StateListName)'), ''')/items?$select=Id&$filter=OccurrenceStartUtc lt datetime''', formatDateTime(addDays(utcNow(), mul(-1, add(int(parameters('WindowPastDays (o3gc_WindowPastDays)')), int(parameters('MapRetentionDays (o3gc_MapRetentionDays)'))))), 'yyyy-MM-ddTHH:mm:ss'), '''&$top=200')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata"
+              }
+            }
+          },
+          "runAfter": {
+            "Delete_Settled_Deletions": [
+              "Succeeded"
+            ]
+          },
+          "description": "Occurrences the sync window will never include again. Removing the row orphans its Google event, which is harmless for a meeting long past - and flow 7 can still find it by its marker."
+        },
+        "Delete_Stale_Rows": {
+          "runAfter": {
+            "Find_Stale_Rows": [
+              "Succeeded",
+              "Failed"
+            ]
+          },
+          "type": "Foreach",
+          "foreach": "@coalesce(body('Find_Stale_Rows')?['value'], json('[]'))",
+          "runtimeConfiguration": {
+            "concurrency": {
+              "repetitions": 4
+            }
+          },
+          "actions": {
+            "Delete_Stale_Row": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "HttpRequest",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                  "parameters/method": "POST",
+                  "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('StateListName (o3gc_StateListName)'), ''')/items(', string(item()?['Id']), ')')}",
+                  "parameters/headers": {
+                    "Accept": "application/json;odata=nometadata",
+                    "X-HTTP-Method": "DELETE",
+                    "IF-MATCH": "*"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "Filter_Stale": {
+          "type": "Query",
+          "inputs": {
+            "from": "@coalesce(body('Get_Health')?['value'], json('[]'))",
+            "where": "@or(less(coalesce(item()?['LastSuccessUtc'], '2000-01-01T00:00:00Z'), addMinutes(utcNow(), mul(-1, int(coalesce(item()?['StaleAfterMinutes'], parameters('HeartbeatStaleMinutes (o3gc_HeartbeatStaleMinutes)')))))), greaterOrEquals(coalesce(item()?['ConsecutiveFailures'], 0), 3))"
+          },
+          "description": "Each row carries its own threshold, because these flows run on cadences from every 30 minutes to once a day. HeartbeatStaleMinutes is only the fallback for a row that predates the per-flow value.",
+          "runAfter": {
+            "Get_Health": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Select_Stale_Html": {
+          "type": "Select",
+          "inputs": {
+            "from": "@body('Filter_Stale')",
+            "select": "@concat('<li><b>', coalesce(item()?['Title'], ''), '</b> - last success ', coalesce(item()?['LastSuccessUtc'], 'never'), ', threshold ', string(coalesce(item()?['StaleAfterMinutes'], 0)), ' min', if(equals(coalesce(item()?['AffectsSync'], 'no'), 'yes'), ' <b>(this one stops your calendar syncing)</b>', ' (supporting flow)'), '</li>')"
+          },
+          "runAfter": {
+            "Stale_Flows": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Filter_Sync_Affecting": {
+          "runAfter": {
+            "Filter_Stale": [
+              "Succeeded"
+            ]
+          },
+          "type": "Query",
+          "description": "Only the reconciler's silence means the calendar is going stale. The trigger is a latency optimisation, and the digest and backup do not touch the mirror at all.",
+          "inputs": {
+            "from": "@body('Filter_Stale')",
+            "where": "@equals(coalesce(item()?['AffectsSync'], 'no'), 'yes')"
+          }
+        }
+      },
+      "outputs": {}
+    }
+  },
+  "schemaVersion": "1.0.0.0"
+}

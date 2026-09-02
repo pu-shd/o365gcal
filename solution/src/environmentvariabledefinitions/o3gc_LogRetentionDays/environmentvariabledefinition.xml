@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{664988e9-16fb-5acc-9dd7-53c5164a3b06}" schemaname="o3gc_LogRetentionDays">
+  <displayname>LogRetentionDays</displayname>
+  <description>Audit log rows older than this are pruned by the watchdog.</description>
+  <type>100000001</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>90</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

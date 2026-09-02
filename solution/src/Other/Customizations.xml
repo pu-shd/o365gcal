@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ImportExportXml xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Entities />
+  <Roles />
+  <Workflows>
+    <Workflow WorkflowId="{9C1F4A20-3B77-4E51-9A3D-5E2B10C7D004}" Name="O365GCal 0 Setup and Provision">
+      <JsonFileName>/Workflows/O365GCal-0-Setup-9C1F4A20-3B77-4E51-9A3D-5E2B10C7D004.json</JsonFileName>
+      <Type>1</Type>
+      <Subprocess>0</Subprocess>
+      <Category>5</Category>
+      <Mode>0</Mode>
+      <Scope>4</Scope>
+      <OnDemand>0</OnDemand>
+      <TriggerOnCreate>0</TriggerOnCreate>
+      <TriggerOnDelete>0</TriggerOnDelete>
+      <AsyncAutodelete>0</AsyncAutodelete>
+      <SyncWorkflowLogOnFailure>0</SyncWorkflowLogOnFailure>
+      <StateCode>1</StateCode>
+      <StatusCode>2</StatusCode>
+      <RunAs>1</RunAs>
+      <IsTransacted>1</IsTransacted>
+      <IntroducedVersion>1.0</IntroducedVersion>
+      <IsCustomizable>1</IsCustomizable>
+      <BusinessProcessType>0</BusinessProcessType>
+      <IsCustomProcessingStepAllowedForOtherPublishers>1</IsCustomProcessingStepAllowedForOtherPublishers>
+      <PrimaryEntity>none</PrimaryEntity>
+      <LocalizedNames>
+        <LocalizedName description="O365GCal 0 Setup and Provision" languagecode="1033" />
+      </LocalizedNames>
+    </Workflow>
+    <Workflow WorkflowId="{9C1F4A20-3B77-4E51-9A3D-5E2B10C7D003}" Name="O365GCal 1 Sync Outlook Trigger">
+      <JsonFileName>/Workflows/O365GCal-1-SyncTrigger-9C1F4A20-3B77-4E51-9A3D-5E2B10C7D003.json</JsonFileName>
+      <Type>1</Type>
+      <Subprocess>0</Subprocess>
+      <Category>5</Category>
+      <Mode>0</Mode>
+      <Scope>4</Scope>
+      <OnDemand>0</OnDemand>
+      <TriggerOnCreate>0</TriggerOnCreate>
+      <TriggerOnDelete>0</TriggerOnDelete>
+      <AsyncAutodelete>0</AsyncAutodelete>
+      <SyncWorkflowLogOnFailure>0</SyncWorkflowLogOnFailure>
+      <StateCode>0</StateCode>
+      <StatusCode>1</StatusCode>
+      <RunAs>1</RunAs>
+      <IsTransacted>1</IsTransacted>
+      <IntroducedVersion>1.0</IntroducedVersion>
+      <IsCustomizable>1</IsCustomizable>
+      <BusinessProcessType>0</BusinessProcessType>
+      <IsCustomProcessingStepAllowedForOtherPublishers>1</IsCustomProcessingStepAllowedForOtherPublishers>
+      <PrimaryEntity>none</PrimaryEntity>
+      <LocalizedNames>
+        <LocalizedName description="O365GCal 1 Sync Outlook Trigger" languagecode="1033" />
+      </LocalizedNames>
+    </Workflow>
+    <Workflow WorkflowId="{9C1F4A20-3B77-4E51-9A3D-5E2B10C7D001}" Name="O365GCal 2 Apply Event">
+      <JsonFileName>/Workflows/O365GCal-2-ApplyEvent-9C1F4A20-3B77-4E51-9A3D-5E2B10C7D001.json</JsonFileName>
+      <Type>1</Type>
+      <Subprocess>1</Subprocess>
+      <Category>5</Category>
+      <Mode>0</Mode>
+      <Scope>4</Scope>
+      <OnDemand>0</OnDemand>
+      <TriggerOnCreate>0</TriggerOnCreate>
+      <TriggerOnDelete>0</TriggerOnDelete>
+      <AsyncAutodelete>0</AsyncAutodelete>
+      <SyncWorkflowLogOnFailure>0</SyncWorkflowLogOnFailure>
+      <StateCode>1</StateCode>
+      <StatusCode>2</StatusCode>
+      <RunAs>1</RunAs>
+      <IsTransacted>1</IsTransacted>
+      <IntroducedVersion>1.0</IntroducedVersion>
+      <IsCustomizable>1</IsCustomizable>
+      <BusinessProcessType>0</BusinessProcessType>
+      <IsCustomProcessingStepAllowedForOtherPublishers>1</IsCustomProcessingStepAllowedForOtherPublishers>
+      <PrimaryEntity>none</PrimaryEntity>
+      <LocalizedNames>
+        <LocalizedName description="O365GCal 2 Apply Event" languagecode="1033" />
+      </LocalizedNames>
+    </Workflow>
+    <Workflow WorkflowId="{9C1F4A20-3B77-4E51-9A3D-5E2B10C7D002}" Name="O365GCal 3 Reconcile">
+      <JsonFileName>/Workflows/O365GCal-3-Reconcile-9C1F4A20-3B77-4E51-9A3D-5E2B10C7D002.json</JsonFileName>
+      <Type>1</Type>
+      <Subprocess>0</Subprocess>
+      <Category>5</Category>
+      <Mode>0</Mode>
+      <Scope>4</Scope>
+      <OnDemand>0</OnDemand>
+      <TriggerOnCreate>0</TriggerOnCreate>
+      <TriggerOnDelete>0</TriggerOnDelete>
+      <AsyncAutodelete>0</AsyncAutodelete>
+      <SyncWorkflowLogOnFailure>0</SyncWorkflowLogOnFailure>
+      <StateCode>0</StateCode>
+      <StatusCode>1</StatusCode>
+      <RunAs>1</RunAs>
+      <IsTransacted>1</IsTransacted>
+      <IntroducedVersion>1.0</IntroducedVersion>
+      <IsCustomizable>1</IsCustomizable>
+      <BusinessProcessType>0</BusinessProcessType>
+      <IsCustomProcessingStepAllowedForOtherPublishers>1</IsCustomProcessingStepAllowedForOtherPublishers>
+      <PrimaryEntity>none</PrimaryEntity>
+      <LocalizedNames>
+        <LocalizedName description="O365GCal 3 Reconcile" languagecode="1033" />
+      </LocalizedNames>
+    </Workflow>
+    <Workflow WorkflowId="{9C1F4A20-3B77-4E51-9A3D-5E2B10C7D005}" Name="O365GCal 4 Digest and Change Alerts">
+      <JsonFileName>/Workflows/O365GCal-4-Digest-9C1F4A20-3B77-4E51-9A3D-5E2B10C7D005.json</JsonFileName>
+      <Type>1</Type>
+      <Subprocess>0</Subprocess>
+      <Category>5</Category>
+      <Mode>0</Mode>
+      <Scope>4</Scope>
+      <OnDemand>0</OnDemand>
+      <TriggerOnCreate>0</TriggerOnCreate>
+      <TriggerOnDelete>0</TriggerOnDelete>
+      <AsyncAutodelete>0</AsyncAutodelete>
+      <SyncWorkflowLogOnFailure>0</SyncWorkflowLogOnFailure>
+      <StateCode>0</StateCode>
+      <StatusCode>1</StatusCode>
+      <RunAs>1</RunAs>
+      <IsTransacted>1</IsTransacted>
+      <IntroducedVersion>1.0</IntroducedVersion>
+      <IsCustomizable>1</IsCustomizable>
+      <BusinessProcessType>0</BusinessProcessType>
+      <IsCustomProcessingStepAllowedForOtherPublishers>1</IsCustomProcessingStepAllowedForOtherPublishers>
+      <PrimaryEntity>none</PrimaryEntity>
+      <LocalizedNames>
+        <LocalizedName description="O365GCal 4 Digest and Change Alerts" languagecode="1033" />
+      </LocalizedNames>
+    </Workflow>
+    <Workflow WorkflowId="{9C1F4A20-3B77-4E51-9A3D-5E2B10C7D006}" Name="O365GCal 5 Watchdog">
+      <JsonFileName>/Workflows/O365GCal-5-Watchdog-9C1F4A20-3B77-4E51-9A3D-5E2B10C7D006.json</JsonFileName>
+      <Type>1</Type>
+      <Subprocess>0</Subprocess>
+      <Category>5</Category>
+      <Mode>0</Mode>
+      <Scope>4</Scope>
+      <OnDemand>0</OnDemand>
+      <TriggerOnCreate>0</TriggerOnCreate>
+      <TriggerOnDelete>0</TriggerOnDelete>
+      <AsyncAutodelete>0</AsyncAutodelete>
+      <SyncWorkflowLogOnFailure>0</SyncWorkflowLogOnFailure>
+      <StateCode>0</StateCode>
+      <StatusCode>1</StatusCode>
+      <RunAs>1</RunAs>
+      <IsTransacted>1</IsTransacted>
+      <IntroducedVersion>1.0</IntroducedVersion>
+      <IsCustomizable>1</IsCustomizable>
+      <BusinessProcessType>0</BusinessProcessType>
+      <IsCustomProcessingStepAllowedForOtherPublishers>1</IsCustomProcessingStepAllowedForOtherPublishers>
+      <PrimaryEntity>none</PrimaryEntity>
+      <LocalizedNames>
+        <LocalizedName description="O365GCal 5 Watchdog" languagecode="1033" />
+      </LocalizedNames>
+    </Workflow>
+    <Workflow WorkflowId="{9C1F4A20-3B77-4E51-9A3D-5E2B10C7D007}" Name="O365GCal 6 Backup State">
+      <JsonFileName>/Workflows/O365GCal-6-Backup-9C1F4A20-3B77-4E51-9A3D-5E2B10C7D007.json</JsonFileName>
+      <Type>1</Type>
+      <Subprocess>0</Subprocess>
+      <Category>5</Category>
+      <Mode>0</Mode>
+      <Scope>4</Scope>
+      <OnDemand>0</OnDemand>
+      <TriggerOnCreate>0</TriggerOnCreate>
+      <TriggerOnDelete>0</TriggerOnDelete>
+      <AsyncAutodelete>0</AsyncAutodelete>
+      <SyncWorkflowLogOnFailure>0</SyncWorkflowLogOnFailure>
+      <StateCode>0</StateCode>
+      <StatusCode>1</StatusCode>
+      <RunAs>1</RunAs>
+      <IsTransacted>1</IsTransacted>
+      <IntroducedVersion>1.0</IntroducedVersion>
+      <IsCustomizable>1</IsCustomizable>
+      <IsCustomProcessingStepAllowedForOtherPublishers>1</IsCustomProcessingStepAllowedForOtherPublishers>
+      <PrimaryEntity>none</PrimaryEntity>
+      <LocalizedNames>
+        <LocalizedName description="O365GCal 6 Backup State" languagecode="1033" />
+      </LocalizedNames>
+    </Workflow>
+    <Workflow WorkflowId="{9C1F4A20-3B77-4E51-9A3D-5E2B10C7D008}" Name="O365GCal 7 Dedup and Repair">
+      <JsonFileName>/Workflows/O365GCal-7-Dedup-9C1F4A20-3B77-4E51-9A3D-5E2B10C7D008.json</JsonFileName>
+      <Type>1</Type>
+      <Subprocess>0</Subprocess>
+      <Category>5</Category>
+      <Mode>0</Mode>
+      <Scope>4</Scope>
+      <OnDemand>0</OnDemand>
+      <TriggerOnCreate>0</TriggerOnCreate>
+      <TriggerOnDelete>0</TriggerOnDelete>
+      <AsyncAutodelete>0</AsyncAutodelete>
+      <SyncWorkflowLogOnFailure>0</SyncWorkflowLogOnFailure>
+      <StateCode>0</StateCode>
+      <StatusCode>1</StatusCode>
+      <RunAs>1</RunAs>
+      <IsTransacted>1</IsTransacted>
+      <IntroducedVersion>1.0</IntroducedVersion>
+      <IsCustomizable>1</IsCustomizable>
+      <IsCustomProcessingStepAllowedForOtherPublishers>1</IsCustomProcessingStepAllowedForOtherPublishers>
+      <PrimaryEntity>none</PrimaryEntity>
+      <LocalizedNames>
+        <LocalizedName description="O365GCal 7 Dedup and Repair" languagecode="1033" />
+      </LocalizedNames>
+    </Workflow>
+  </Workflows>
+  <FieldSecurityProfiles />
+  <Templates />
+  <EntityMaps />
+  <EntityRelationships />
+  <OrganizationSettings />
+  <optionsets />
+  <CustomControls />
+  <SolutionPluginAssemblies />
+  <EntityDataProviders />
+  <connectionreferences>
+    <connectionreference connectionreferencelogicalname="o3gc_sharedoffice365">
+      <connectionreferencedisplayname>O365GCal Outlook</connectionreferencedisplayname>
+      <connectionreferencedescription>Reads the source Outlook calendar and sends digest and alert email. Office 365 Outlook - NOT the Outlook.com personal connector.</connectionreferencedescription>
+      <connectorid>/providers/Microsoft.PowerApps/apis/shared_office365</connectorid>
+      <iscustomizable>1</iscustomizable>
+      <promptingbehavior>0</promptingbehavior>
+    </connectionreference>
+    <connectionreference connectionreferencelogicalname="o3gc_sharedgooglecalendar">
+      <connectionreferencedisplayname>O365GCal Google Calendar</connectionreferencedisplayname>
+      <connectionreferencedescription>Writes mirrored events to the target Google calendar.</connectionreferencedescription>
+      <connectorid>/providers/Microsoft.PowerApps/apis/shared_googlecalendar</connectorid>
+      <iscustomizable>1</iscustomizable>
+      <promptingbehavior>0</promptingbehavior>
+    </connectionreference>
+    <connectionreference connectionreferencelogicalname="o3gc_sharedsharepointonline">
+      <connectionreferencedisplayname>O365GCal SharePoint</connectionreferencedisplayname>
+      <connectionreferencedescription>Holds the sync map, audit log and heartbeat lists.</connectionreferencedescription>
+      <connectorid>/providers/Microsoft.PowerApps/apis/shared_sharepointonline</connectorid>
+      <iscustomizable>1</iscustomizable>
+      <promptingbehavior>0</promptingbehavior>
+    </connectionreference>
+  </connectionreferences>
+  <Languages>
+    <Language>1033</Language>
+  </Languages>
+</ImportExportXml>

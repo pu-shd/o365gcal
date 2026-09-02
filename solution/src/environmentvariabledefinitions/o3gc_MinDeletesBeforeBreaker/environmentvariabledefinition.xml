@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{92572af4-37af-5977-b55e-854b790c8016}" schemaname="o3gc_MinDeletesBeforeBreaker">
+  <displayname>MinDeletesBeforeBreaker</displayname>
+  <description>Absolute floor below which the delete percentage rule is not applied, so a sparse calendar can still have events legitimately removed.</description>
+  <type>100000001</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>5</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

@@ -1,0 +1,5 @@
+pytest==9.0.3
+pytest-cov==6.0.0
+respx==0.22.0
+httpx==0.28.1
+jsonschema==4.23.0

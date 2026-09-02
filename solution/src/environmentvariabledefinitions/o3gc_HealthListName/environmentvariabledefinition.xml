@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{8a12caf8-ae83-598f-a745-9ae07029d8e1}" schemaname="o3gc_HealthListName">
+  <displayname>HealthListName</displayname>
+  <description>Title of the heartbeat list the watchdog reads.</description>
+  <type>100000000</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>O365GCalHealth</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

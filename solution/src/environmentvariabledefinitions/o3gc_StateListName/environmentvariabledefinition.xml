@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{e34dda60-4920-56a6-b6c4-7feeda789ab4}" schemaname="o3gc_StateListName">
+  <displayname>StateListName</displayname>
+  <description>Title of the sync-map list. Correlates Outlook occurrences to Google event IDs.</description>
+  <type>100000000</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>O365GCalSyncMap</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

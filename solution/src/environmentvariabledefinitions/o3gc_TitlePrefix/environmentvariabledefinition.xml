@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{204421d4-1dc0-55ce-926c-ae2fcd74e909}" schemaname="o3gc_TitlePrefix">
+  <displayname>TitlePrefix</displayname>
+  <description>Prefix for mirrored event titles, e.g. '[Outlook] '. A single space means no prefix; leading and trailing space is trimmed.</description>
+  <type>100000000</type>
+  <isrequired>0</isrequired>
+  <defaultvalue> </defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

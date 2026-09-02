@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{35768caa-4511-5650-9e57-079b0e19c3d9}" schemaname="o3gc_PrivacyMode">
+  <displayname>PrivacyMode</displayname>
+  <description>'full' mirrors all details. 'busy-only' mirrors private and confidential events as an opaque 'Busy' block with no subject, location or attendees.</description>
+  <type>100000000</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>full</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

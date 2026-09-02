@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{135acb79-8ed6-5a84-aa9e-56a604726be3}" schemaname="o3gc_OutlookCalendarId">
+  <displayname>OutlookCalendarId</displayname>
+  <description>Source Outlook calendar. Use an ID from flow 0 Setup; 'Calendar' is the primary mailbox calendar.</description>
+  <type>100000000</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>Calendar</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{d26d11e5-0ca5-57c4-addf-91058e3d0414}" schemaname="o3gc_MaxDeletePercent">
+  <displayname>MaxDeletePercent</displayname>
+  <description>Circuit breaker. If one run would delete more than this share of mirrored events, it deletes nothing and alerts instead - a short Outlook read looks identical to a mass cancellation.</description>
+  <type>100000001</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>25</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

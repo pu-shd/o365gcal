@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{69ff4330-553e-58d3-9514-c05922a0439f}" schemaname="o3gc_AlertEmail">
+  <displayname>AlertEmail</displayname>
+  <description>Where digests and breakage alerts are sent. Usually your own address.</description>
+  <type>100000000</type>
+  <isrequired>1</isrequired>
+  <defaultvalue></defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

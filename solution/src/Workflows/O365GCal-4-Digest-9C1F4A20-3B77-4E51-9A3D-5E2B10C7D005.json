@@ -1,0 +1,403 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_office365": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "o3gc_sharedoffice365"
+        },
+        "api": {
+          "name": "shared_office365"
+        }
+      },
+      "shared_sharepointonline": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "o3gc_sharedsharepointonline"
+        },
+        "api": {
+          "name": "shared_sharepointonline"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "description": "Daily summary of what the mirror did, plus the invitations still awaiting an RSVP. The invitations section is the point: someone who never opens Outlook can see the meeting on Google but has no way to learn that the organiser is still waiting on them.",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "StateSiteUrl (o3gc_StateSiteUrl)": {
+          "defaultValue": "",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_StateSiteUrl"
+          }
+        },
+        "LogListName (o3gc_LogListName)": {
+          "defaultValue": "O365GCalLog",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_LogListName"
+          }
+        },
+        "HealthListName (o3gc_HealthListName)": {
+          "defaultValue": "O365GCalHealth",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_HealthListName"
+          }
+        },
+        "AlertEmail (o3gc_AlertEmail)": {
+          "defaultValue": "",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_AlertEmail"
+          }
+        },
+        "OutlookCalendarId (o3gc_OutlookCalendarId)": {
+          "defaultValue": "Calendar",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_OutlookCalendarId"
+          }
+        },
+        "WindowFutureDays (o3gc_WindowFutureDays)": {
+          "defaultValue": 120,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_WindowFutureDays"
+          }
+        }
+      },
+      "triggers": {
+        "Every_day_at_07_00": {
+          "type": "Recurrence",
+          "recurrence": {
+            "frequency": "Day",
+            "interval": 1,
+            "schedule": {
+              "hours": [
+                "7"
+              ],
+              "minutes": [
+                0
+              ]
+            }
+          },
+          "metadata": {
+            "operationMetadataId": "9c1f4a20-3b77-4e51-9a3d-000000000005"
+          }
+        }
+      },
+      "actions": {
+        "Init_Since": {
+          "runAfter": {},
+          "type": "InitializeVariable",
+          "description": "Digest covers the last 24 hours; the schedule and this window must stay in step.",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Since",
+                "type": "string",
+                "value": "@{addDays(utcNow(), -1)}"
+              }
+            ]
+          }
+        },
+        "Get_Log_Since": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "GET",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('LogListName (o3gc_LogListName)'), ''')/items?$select=Timestamp,FlowName,Level,Operation,CorrelationKey,Message&$filter=Timestamp ge datetime''', formatDateTime(variables('Since'), 'yyyy-MM-ddTHH:mm:ss'), '''&$top=2000&$orderby=Timestamp desc')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata"
+              }
+            }
+          },
+          "runAfter": {
+            "Init_Since": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Get_Upcoming_Events": {
+          "runAfter": {
+            "Get_Log_Since": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "description": "Read live rather than from the log: an RSVP the user still owes is a current fact about the calendar, not an event that happened yesterday.",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_office365",
+              "operationId": "GetEventsCalendarViewV3",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+            },
+            "parameters": {
+              "calendarId": "@parameters('OutlookCalendarId (o3gc_OutlookCalendarId)')",
+              "startDateTimeUtc": "@{formatDateTime(utcNow(), 'yyyy-MM-ddTHH:mm:ss')}",
+              "endDateTimeUtc": "@{formatDateTime(addDays(utcNow(), int(parameters('WindowFutureDays (o3gc_WindowFutureDays)'))), 'yyyy-MM-ddTHH:mm:ss')}",
+              "$orderby": "start/dateTime",
+              "$top": 250
+            }
+          },
+          "operationOptions": "DisableAsyncPattern"
+        },
+        "Awaiting_Response": {
+          "runAfter": {
+            "Filter_Awaiting": [
+              "Succeeded"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "@body('Filter_Awaiting')"
+        },
+        "Group_Creates": {
+          "runAfter": {
+            "Filter_Creates": [
+              "Succeeded"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "@body('Filter_Creates')"
+        },
+        "Group_Updates": {
+          "runAfter": {
+            "Filter_Updates": [
+              "Succeeded"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "@body('Filter_Updates')"
+        },
+        "Group_Deletes": {
+          "runAfter": {
+            "Filter_Deletes": [
+              "Succeeded"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "@body('Filter_Deletes')"
+        },
+        "Group_Errors": {
+          "runAfter": {
+            "Filter_Errors": [
+              "Succeeded"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "@body('Filter_Errors')"
+        },
+        "Send_Digest": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_office365",
+              "operationId": "SendEmailV2",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+            },
+            "parameters": {
+              "emailMessage/To": "@parameters('AlertEmail (o3gc_AlertEmail)')",
+              "emailMessage/Subject": "@{concat('O365GCal daily digest: ', string(length(outputs('Group_Creates'))), ' added, ', string(length(outputs('Group_Updates'))), ' changed, ', string(length(outputs('Group_Deletes'))), ' removed', if(greater(length(outputs('Group_Errors')), 0), concat(', ', string(length(outputs('Group_Errors'))), ' ERRORS'), ''))}",
+              "emailMessage/Body": "<h3>Calendar mirror - last 24 hours</h3><p><b>@{length(outputs('Group_Creates'))}</b> added &middot; <b>@{length(outputs('Group_Updates'))}</b> changed &middot; <b>@{length(outputs('Group_Deletes'))}</b> removed</p><h4>Invitations awaiting your response (@{length(outputs('Awaiting_Response'))})</h4><p>These meetings are on your Google calendar but you have not replied in Outlook. Google cannot show this, and the organiser is still waiting.</p><ul>@{join(body('Select_Awaiting_Html'), '')}</ul><h4>Added</h4><ul>@{join(body('Select_Creates_Html'), '')}</ul><h4>Changed</h4><ul>@{join(body('Select_Updates_Html'), '')}</ul><h4>Removed</h4><ul>@{join(body('Select_Deletes_Html'), '')}</ul><h4>Errors</h4><ul>@{join(body('Select_Errors_Html'), '')}</ul>",
+              "emailMessage/Importance": "@{if(greater(length(outputs('Group_Errors')), 0), 'High', 'Normal')}"
+            }
+          },
+          "runAfter": {
+            "Select_Errors_Html": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Get_Health_Row": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "GET",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items?$select=Id&$filter=Title eq ''4 Digest''&$top=1')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata"
+              }
+            }
+          },
+          "runAfter": {
+            "Send_Digest": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Stamp_Health": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items(', string(first(body('Get_Health_Row')?['value'])?['Id']), ')')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata",
+                "X-HTTP-Method": "MERGE",
+                "IF-MATCH": "*"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(json('{}'), 'LastSuccessUtc', utcNow()), 'LastRunUtc', utcNow()), 'LastRunStatus', 'Succeeded')"
+            }
+          },
+          "runAfter": {
+            "Get_Health_Row": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Filter_Awaiting": {
+          "type": "Query",
+          "inputs": {
+            "from": "@coalesce(body('Get_Upcoming_Events')?['value'], json('[]'))",
+            "where": "@contains(createArray('notResponded','tentativelyAccepted'), coalesce(item()?['responseType'], 'none'))"
+          },
+          "description": "The section a Google-only user cannot get any other way: Google shows the meeting but never that an RSVP is outstanding.",
+          "runAfter": {
+            "Get_Upcoming_Events": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Filter_Creates": {
+          "type": "Query",
+          "inputs": {
+            "from": "@coalesce(body('Get_Log_Since')?['value'], json('[]'))",
+            "where": "@equals(item()?['Operation'], 'Create')"
+          },
+          "runAfter": {
+            "Awaiting_Response": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Filter_Updates": {
+          "type": "Query",
+          "inputs": {
+            "from": "@coalesce(body('Get_Log_Since')?['value'], json('[]'))",
+            "where": "@equals(item()?['Operation'], 'Update')"
+          },
+          "runAfter": {
+            "Group_Creates": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Filter_Deletes": {
+          "type": "Query",
+          "inputs": {
+            "from": "@coalesce(body('Get_Log_Since')?['value'], json('[]'))",
+            "where": "@equals(item()?['Operation'], 'Delete')"
+          },
+          "runAfter": {
+            "Group_Updates": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Filter_Errors": {
+          "type": "Query",
+          "inputs": {
+            "from": "@coalesce(body('Get_Log_Since')?['value'], json('[]'))",
+            "where": "@equals(item()?['Level'], 'Error')"
+          },
+          "runAfter": {
+            "Group_Deletes": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Select_Awaiting_Html": {
+          "type": "Select",
+          "inputs": {
+            "from": "@outputs('Awaiting_Response')",
+            "select": "@concat('<li><b>', coalesce(item()?['subject'], '(no subject)'), '</b> - ', coalesce(item()?['startWithTimeZone'], ''), ' - ', coalesce(item()?['responseType'], ''), ' - <a href=\"', coalesce(item()?['webLink'], ''), '\">respond in Outlook</a></li>')"
+          },
+          "runAfter": {
+            "Group_Errors": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Select_Creates_Html": {
+          "type": "Select",
+          "inputs": {
+            "from": "@outputs('Group_Creates')",
+            "select": "@concat('<li>', coalesce(item()?['Message'], ''), '</li>')"
+          },
+          "runAfter": {
+            "Select_Awaiting_Html": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Select_Updates_Html": {
+          "type": "Select",
+          "inputs": {
+            "from": "@outputs('Group_Updates')",
+            "select": "@concat('<li>', coalesce(item()?['Message'], ''), '</li>')"
+          },
+          "runAfter": {
+            "Select_Creates_Html": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Select_Deletes_Html": {
+          "type": "Select",
+          "inputs": {
+            "from": "@outputs('Group_Deletes')",
+            "select": "@concat('<li>', coalesce(item()?['Message'], ''), '</li>')"
+          },
+          "runAfter": {
+            "Select_Updates_Html": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Select_Errors_Html": {
+          "type": "Select",
+          "inputs": {
+            "from": "@outputs('Group_Errors')",
+            "select": "@concat('<li>', coalesce(item()?['FlowName'], ''), ': ', coalesce(item()?['Message'], ''), '</li>')"
+          },
+          "runAfter": {
+            "Select_Deletes_Html": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "outputs": {}
+    }
+  },
+  "schemaVersion": "1.0.0.0"
+}

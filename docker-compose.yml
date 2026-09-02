@@ -1,0 +1,14 @@
+services:
+  tests:
+    build: .
+    image: o365gcal-tests
+    # Live smoke tests are opt-in and never run here: they create and delete real
+    # events on a real calendar. See docs/ADMIN.md.
+    environment:
+      LIVE: "0"
+    volumes:
+      - ./src:/app/src:ro
+      - ./tests:/app/tests:ro
+      - ./solution:/app/solution:ro
+      - ./scripts:/app/scripts:ro
+      - ./docs:/app/docs:ro

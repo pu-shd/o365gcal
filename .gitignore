@@ -1,0 +1,38 @@
+# --- Python -----------------------------------------------------------------
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- build output -----------------------------------------------------------
+# Regenerate with ./scripts/build.sh; never edit or commit the zips.
+dist/
+solution/out/
+solution/bin/
+solution/obj/
+*.zip
+
+# --- anything carrying one tenant's configuration ---------------------------
+#
+# These were the actual leak: scripts/backup.sh writes a directory holding the
+# installer's email address, their SharePoint personal-site URL, the Dataverse org
+# host, the tenant id and their connection ids. No credentials, but plenty that
+# identifies one organisation, and none of it belongs in a shared repository.
+#
+# Note both spellings: `*.settings.json` matches only names ENDING in that, so a plain
+# `settings.json` inside a backup directory slipped through the first time.
+backups/
+o365gcal.settings.json
+*.settings.json
+settings.json
+*.deploymentsettings.json
+
+# Public connector metadata, but large and regenerable: make swagger
+connectors/
+
+# --- logs and scratch -------------------------------------------------------
+*.log
+pac-log.txt
+.DS_Store

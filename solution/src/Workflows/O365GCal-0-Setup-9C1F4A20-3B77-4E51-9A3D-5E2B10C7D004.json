@@ -1,0 +1,1612 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_office365": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "o3gc_sharedoffice365"
+        },
+        "api": {
+          "name": "shared_office365"
+        }
+      },
+      "shared_googlecalendar": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "o3gc_sharedgooglecalendar"
+        },
+        "api": {
+          "name": "shared_googlecalendar"
+        }
+      },
+      "shared_sharepointonline": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "o3gc_sharedsharepointonline"
+        },
+        "api": {
+          "name": "shared_sharepointonline"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "description": "Run once at install, and again after any upgrade that adds a column. Lists the available Outlook and Google calendars, provisions the three state lists with their indexed columns, seeds one health row per monitored flow with that flow's own staleness threshold, and emails a configuration summary. Idempotent: every create tolerates 'already exists', and retries are disabled on those so a re-run takes seconds rather than minutes.",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "OutlookCalendarId (o3gc_OutlookCalendarId)": {
+          "defaultValue": "Calendar",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_OutlookCalendarId"
+          }
+        },
+        "GoogleCalendarId (o3gc_GoogleCalendarId)": {
+          "defaultValue": "primary",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_GoogleCalendarId"
+          }
+        },
+        "StateSiteUrl (o3gc_StateSiteUrl)": {
+          "defaultValue": "",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_StateSiteUrl"
+          }
+        },
+        "StateListName (o3gc_StateListName)": {
+          "defaultValue": "O365GCalSyncMap",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_StateListName"
+          }
+        },
+        "LogListName (o3gc_LogListName)": {
+          "defaultValue": "O365GCalLog",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_LogListName"
+          }
+        },
+        "HealthListName (o3gc_HealthListName)": {
+          "defaultValue": "O365GCalHealth",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_HealthListName"
+          }
+        },
+        "AlertEmail (o3gc_AlertEmail)": {
+          "defaultValue": "",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_AlertEmail"
+          }
+        },
+        "WindowPastDays (o3gc_WindowPastDays)": {
+          "defaultValue": 7,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_WindowPastDays"
+          }
+        },
+        "WindowFutureDays (o3gc_WindowFutureDays)": {
+          "defaultValue": 120,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_WindowFutureDays"
+          }
+        },
+        "DryRun (o3gc_DryRun)": {
+          "defaultValue": "no",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_DryRun"
+          }
+        }
+      },
+      "triggers": {
+        "manual": {
+          "type": "Request",
+          "kind": "Button",
+          "metadata": {
+            "operationMetadataId": "9c1f4a20-3b77-4e51-9a3d-000000000004"
+          },
+          "inputs": {
+            "schema": {
+              "type": "object",
+              "properties": {}
+            }
+          }
+        }
+      },
+      "actions": {
+        "List_Outlook_Calendars": {
+          "type": "OpenApiConnection",
+          "description": "Shows which calendar IDs are valid for OutlookCalendarId.",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_office365",
+              "operationId": "CalendarGetTables_V2",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+            },
+            "parameters": {}
+          },
+          "runAfter": {}
+        },
+        "List_Google_Calendars": {
+          "type": "OpenApiConnection",
+          "description": "Shows which calendar IDs are valid for GoogleCalendarId.",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_googlecalendar",
+              "operationId": "ListCalendars",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_googlecalendar"
+            },
+            "parameters": {
+              "minAccessRole": "writer"
+            }
+          },
+          "runAfter": {
+            "List_Outlook_Calendars": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Create_List_SyncMap": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'BaseTemplate', 100), 'Title', 'O365GCalSyncMap'), 'Description', 'Correlates each mirrored Outlook occurrence to its Google event. Source of truth for what this automation created, and therefore for what it is allowed to delete.'), 'ContentTypesEnabled', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "description": "Creates O365GCalSyncMap, tolerating 'already exists' - the normal case from the second run onward. Retries are off because that failure is expected.",
+          "runAfter": {
+            "List_Google_Calendars": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_SyncMap_OutlookEventId": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalSyncMap')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 2), 'Title', 'OutlookEventId'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "description": "Current Graph event id. Changes when an invitation is accepted, which is exactly why it is not the correlation key.",
+          "runAfter": {
+            "Create_List_SyncMap": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_SyncMap_OutlookICalUId": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalSyncMap')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 2), 'Title', 'OutlookICalUId'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "description": "Stable across the id rewrite and shared by every occurrence of a series.",
+          "runAfter": {
+            "Add_SyncMap_OutlookEventId": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_SyncMap_OutlookSeriesMasterId": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalSyncMap')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 2), 'Title', 'OutlookSeriesMasterId'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "runAfter": {
+            "Add_SyncMap_OutlookICalUId": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_SyncMap_OccurrenceStartUtc": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalSyncMap')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 4), 'Title', 'OccurrenceStartUtc'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "description": "Drives the in-window filter so out-of-window rows are never mistaken for deletions.",
+          "runAfter": {
+            "Add_SyncMap_OutlookSeriesMasterId": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_SyncMap_GoogleEventId": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalSyncMap')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 2), 'Title', 'GoogleEventId'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "description": "Empty means nothing to delete. We only ever delete an id we recorded ourselves.",
+          "runAfter": {
+            "Add_SyncMap_OccurrenceStartUtc": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_SyncMap_GoogleHtmlLink": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalSyncMap')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 11), 'Title', 'GoogleHtmlLink'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "runAfter": {
+            "Add_SyncMap_GoogleEventId": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_SyncMap_ContentFingerprint": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalSyncMap')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 3), 'Title', 'ContentFingerprint'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "description": "Change detection. A plain comparable string rather than a hash, because the Power Automate expression language has no hashing function.",
+          "runAfter": {
+            "Add_SyncMap_GoogleHtmlLink": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_SyncMap_SyncState": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalSyncMap')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 2), 'Title', 'SyncState'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "description": "Active | Deleted | Error | Skipped.",
+          "runAfter": {
+            "Add_SyncMap_ContentFingerprint": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_SyncMap_LastSyncedUtc": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalSyncMap')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 4), 'Title', 'LastSyncedUtc'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "runAfter": {
+            "Add_SyncMap_SyncState": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_SyncMap_LastOutlookModifiedUtc": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalSyncMap')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 4), 'Title', 'LastOutlookModifiedUtc'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "runAfter": {
+            "Add_SyncMap_LastSyncedUtc": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_SyncMap_AttendeeSummary": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalSyncMap')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 3), 'Title', 'AttendeeSummary'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "runAfter": {
+            "Add_SyncMap_LastOutlookModifiedUtc": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_SyncMap_MyResponse": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalSyncMap')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 2), 'Title', 'MyResponse'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "runAfter": {
+            "Add_SyncMap_AttendeeSummary": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_SyncMap_ErrorCount": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalSyncMap')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 9), 'Title', 'ErrorCount'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "runAfter": {
+            "Add_SyncMap_MyResponse": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_SyncMap_LastError": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalSyncMap')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 3), 'Title', 'LastError'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "runAfter": {
+            "Add_SyncMap_ErrorCount": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_SyncMap_OwnerUpn": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalSyncMap')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 2), 'Title', 'OwnerUpn'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "runAfter": {
+            "Add_SyncMap_LastError": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Index_SyncMap_OutlookICalUId": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalSyncMap')/fields/getbytitle('OutlookICalUId')",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata",
+                "X-HTTP-Method": "MERGE",
+                "IF-MATCH": "*"
+              },
+              "parameters/body": "@setProperty(json('{}'), 'Indexed', true)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "description": "Indexed: filtered on every run, and SharePoint refuses unindexed filters past 5000 items.",
+          "runAfter": {
+            "Add_SyncMap_OwnerUpn": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Index_SyncMap_OccurrenceStartUtc": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalSyncMap')/fields/getbytitle('OccurrenceStartUtc')",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata",
+                "X-HTTP-Method": "MERGE",
+                "IF-MATCH": "*"
+              },
+              "parameters/body": "@setProperty(json('{}'), 'Indexed', true)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "description": "Indexed: filtered on every run, and SharePoint refuses unindexed filters past 5000 items.",
+          "runAfter": {
+            "Index_SyncMap_OutlookICalUId": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Index_SyncMap_SyncState": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalSyncMap')/fields/getbytitle('SyncState')",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata",
+                "X-HTTP-Method": "MERGE",
+                "IF-MATCH": "*"
+              },
+              "parameters/body": "@setProperty(json('{}'), 'Indexed', true)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "description": "Indexed: filtered on every run, and SharePoint refuses unindexed filters past 5000 items.",
+          "runAfter": {
+            "Index_SyncMap_OccurrenceStartUtc": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Index_SyncMap_Title": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalSyncMap')/fields/getbytitle('Title')",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata",
+                "X-HTTP-Method": "MERGE",
+                "IF-MATCH": "*"
+              },
+              "parameters/body": "@setProperty(json('{}'), 'Indexed', true)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "description": "Title carries the correlation key, the run id or the flow name; every lookup filters on it.",
+          "runAfter": {
+            "Index_SyncMap_SyncState": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Create_List_Log": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'BaseTemplate', 100), 'Title', 'O365GCalLog'), 'Description', 'Append-only audit trail. Input to the daily digest and the first place to look when something did not mirror.'), 'ContentTypesEnabled', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "description": "Creates O365GCalLog, tolerating 'already exists' - the normal case from the second run onward. Retries are off because that failure is expected.",
+          "runAfter": {
+            "Index_SyncMap_Title": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_Log_Timestamp": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalLog')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 4), 'Title', 'Timestamp'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "runAfter": {
+            "Create_List_Log": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_Log_FlowName": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalLog')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 2), 'Title', 'FlowName'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "runAfter": {
+            "Add_Log_Timestamp": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_Log_Level": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalLog')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 2), 'Title', 'Level'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "description": "Info | Warn | Error.",
+          "runAfter": {
+            "Add_Log_FlowName": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_Log_Operation": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalLog')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 2), 'Title', 'Operation'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "description": "Create | Update | Delete | NoOp | Skip.",
+          "runAfter": {
+            "Add_Log_Level": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_Log_CorrelationKey": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalLog')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 2), 'Title', 'CorrelationKey'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "runAfter": {
+            "Add_Log_Operation": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_Log_OutlookEventId": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalLog')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 2), 'Title', 'OutlookEventId'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "runAfter": {
+            "Add_Log_CorrelationKey": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_Log_GoogleEventId": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalLog')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 2), 'Title', 'GoogleEventId'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "runAfter": {
+            "Add_Log_OutlookEventId": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_Log_Message": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalLog')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 3), 'Title', 'Message'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "runAfter": {
+            "Add_Log_GoogleEventId": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_Log_DetailJson": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalLog')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 3), 'Title', 'DetailJson'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "runAfter": {
+            "Add_Log_Message": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Index_Log_Timestamp": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalLog')/fields/getbytitle('Timestamp')",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata",
+                "X-HTTP-Method": "MERGE",
+                "IF-MATCH": "*"
+              },
+              "parameters/body": "@setProperty(json('{}'), 'Indexed', true)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "description": "Indexed: filtered on every run, and SharePoint refuses unindexed filters past 5000 items.",
+          "runAfter": {
+            "Add_Log_DetailJson": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Index_Log_Level": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalLog')/fields/getbytitle('Level')",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata",
+                "X-HTTP-Method": "MERGE",
+                "IF-MATCH": "*"
+              },
+              "parameters/body": "@setProperty(json('{}'), 'Indexed', true)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "description": "Indexed: filtered on every run, and SharePoint refuses unindexed filters past 5000 items.",
+          "runAfter": {
+            "Index_Log_Timestamp": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Index_Log_CorrelationKey": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalLog')/fields/getbytitle('CorrelationKey')",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata",
+                "X-HTTP-Method": "MERGE",
+                "IF-MATCH": "*"
+              },
+              "parameters/body": "@setProperty(json('{}'), 'Indexed', true)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "description": "Indexed: filtered on every run, and SharePoint refuses unindexed filters past 5000 items.",
+          "runAfter": {
+            "Index_Log_Level": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Index_Log_Title": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalLog')/fields/getbytitle('Title')",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata",
+                "X-HTTP-Method": "MERGE",
+                "IF-MATCH": "*"
+              },
+              "parameters/body": "@setProperty(json('{}'), 'Indexed', true)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "description": "Title carries the correlation key, the run id or the flow name; every lookup filters on it.",
+          "runAfter": {
+            "Index_Log_CorrelationKey": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Create_List_Health": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'BaseTemplate', 100), 'Title', 'O365GCalHealth'), 'Description', 'One row per flow. The watchdog reads this; a stale row is how an expired connection or a switched-off flow gets noticed, neither of which any in-flow error handler can catch.'), 'ContentTypesEnabled', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "description": "Creates O365GCalHealth, tolerating 'already exists' - the normal case from the second run onward. Retries are off because that failure is expected.",
+          "runAfter": {
+            "Index_Log_Title": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_Health_LastSuccessUtc": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalHealth')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 4), 'Title', 'LastSuccessUtc'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "runAfter": {
+            "Create_List_Health": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_Health_LastRunUtc": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalHealth')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 4), 'Title', 'LastRunUtc'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "runAfter": {
+            "Add_Health_LastSuccessUtc": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_Health_LastRunStatus": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalHealth')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 2), 'Title', 'LastRunStatus'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "runAfter": {
+            "Add_Health_LastRunUtc": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_Health_ConsecutiveFailures": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalHealth')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 9), 'Title', 'ConsecutiveFailures'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "runAfter": {
+            "Add_Health_LastRunStatus": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_Health_ItemsProcessed": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalHealth')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 9), 'Title', 'ItemsProcessed'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "runAfter": {
+            "Add_Health_ConsecutiveFailures": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_Health_LastDetail": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalHealth')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 3), 'Title', 'LastDetail'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "runAfter": {
+            "Add_Health_ItemsProcessed": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_Health_StaleAfterMinutes": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalHealth')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 9), 'Title', 'StaleAfterMinutes'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "description": "Per-flow staleness threshold. A single global value marks a daily flow as broken for most of every day.",
+          "runAfter": {
+            "Add_Health_LastDetail": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Add_Health_AffectsSync": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalHealth')/fields",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'FieldTypeKind', 2), 'Title', 'AffectsSync'), 'Required', false), 'EnforceUniqueValues', false)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "description": "yes only for the reconciler. Determines whether an alert may claim the calendar is going stale.",
+          "runAfter": {
+            "Add_Health_StaleAfterMinutes": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Index_Health_Title": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/lists/getbytitle('O365GCalHealth')/fields/getbytitle('Title')",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata",
+                "X-HTTP-Method": "MERGE",
+                "IF-MATCH": "*"
+              },
+              "parameters/body": "@setProperty(json('{}'), 'Indexed', true)"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "description": "Title carries the correlation key, the run id or the flow name; every lookup filters on it.",
+          "runAfter": {
+            "Add_Health_AffectsSync": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Get_Existing_Health": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "GET",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items?$select=Id,Title&$top=200')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata"
+              }
+            }
+          },
+          "description": "Health rows are replaced wholesale rather than updated in place. An upsert keyed on Title cannot remove the duplicates an earlier insert-only version left behind, and a duplicate row carrying no threshold is exactly what raised false alarms.",
+          "runAfter": {
+            "Index_Health_Title": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Remove_All_Health_Rows": {
+          "type": "Foreach",
+          "description": "Clears the list so seeding cannot duplicate. Heartbeat history is reset, which is acceptable: setup is an explicit act, and every monitored flow rewrites its row within one cycle.",
+          "foreach": "@coalesce(body('Get_Existing_Health')?['value'], json('[]'))",
+          "runtimeConfiguration": {
+            "concurrency": {
+              "repetitions": 1
+            }
+          },
+          "actions": {
+            "Delete_Health_Row": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "HttpRequest",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                  "parameters/method": "POST",
+                  "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items(', string(item()?['Id']), ')')}",
+                  "parameters/headers": {
+                    "Accept": "application/json;odata=nometadata",
+                    "X-HTTP-Method": "DELETE",
+                    "IF-MATCH": "*"
+                  }
+                },
+                "retryPolicy": {
+                  "type": "none"
+                }
+              }
+            }
+          },
+          "runAfter": {
+            "Get_Existing_Health": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Seed_Health_Rows": {
+          "type": "Foreach",
+          "description": "One row per monitored flow, each carrying its own staleness threshold. A single global threshold marked the daily digest as broken for 22 hours out of every 24.",
+          "foreach": "@json('[{\"name\": \"3 Reconcile\", \"stale\": 90, \"affects\": \"yes\"}, {\"name\": \"5 Watchdog\", \"stale\": 180, \"affects\": \"no\"}, {\"name\": \"4 Digest\", \"stale\": 1800, \"affects\": \"no\"}, {\"name\": \"6 Backup State\", \"stale\": 1800, \"affects\": \"no\"}]')",
+          "runtimeConfiguration": {
+            "concurrency": {
+              "repetitions": 1
+            }
+          },
+          "actions": {
+            "Create_Health_Row": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "HttpRequest",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                  "parameters/method": "POST",
+                  "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items')}",
+                  "parameters/headers": {
+                    "Accept": "application/json;odata=nometadata",
+                    "Content-Type": "application/json;odata=nometadata"
+                  },
+                  "parameters/body": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'Title', items('Seed_Health_Rows')?['name']), 'StaleAfterMinutes', items('Seed_Health_Rows')?['stale']), 'AffectsSync', items('Seed_Health_Rows')?['affects']), 'LastSuccessUtc', utcNow()), 'LastRunStatus', 'Provisioned'), 'ConsecutiveFailures', 0)"
+                }
+              },
+              "description": "LastSuccessUtc is stamped now so a freshly seeded row is not instantly stale - otherwise setup itself would trigger the alert it exists to make trustworthy."
+            }
+          },
+          "runAfter": {
+            "Remove_All_Health_Rows": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Send_Setup_Summary": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_office365",
+              "operationId": "SendEmailV2",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+            },
+            "parameters": {
+              "emailMessage/To": "@parameters('AlertEmail (o3gc_AlertEmail)')",
+              "emailMessage/Subject": "O365GCal: setup complete - confirm your calendar IDs",
+              "emailMessage/Body": "<h3>O365GCal is provisioned</h3><p>State lists created at <a href=\"@{parameters('StateSiteUrl (o3gc_StateSiteUrl)')}\">@{parameters('StateSiteUrl (o3gc_StateSiteUrl)')}</a>.</p><p><b>Current configuration</b><br>Outlook calendar: <code>@{parameters('OutlookCalendarId (o3gc_OutlookCalendarId)')}</code><br>Google calendar: <code>@{parameters('GoogleCalendarId (o3gc_GoogleCalendarId)')}</code><br>Sync window: @{parameters('WindowPastDays (o3gc_WindowPastDays)')} days back to @{parameters('WindowFutureDays (o3gc_WindowFutureDays)')} days ahead<br>Dry run: <b>@{parameters('DryRun (o3gc_DryRun)')}</b></p><p><b>Your Outlook calendars</b><br><code>@{string(body('List_Outlook_Calendars')?['value'])}</code></p><p><b>Your Google calendars</b><br><code>@{string(body('List_Google_Calendars')?['items'])}</code></p><p>If the IDs above are not the ones you want, update the environment variables before turning on flows 3, 4, 5 and 6. Leave DryRun on for one reconcile and read the log list first.</p>",
+              "emailMessage/Importance": "Normal"
+            }
+          },
+          "runAfter": {
+            "Seed_Health_Rows": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "outputs": {}
+    }
+  },
+  "schemaVersion": "1.0.0.0"
+}

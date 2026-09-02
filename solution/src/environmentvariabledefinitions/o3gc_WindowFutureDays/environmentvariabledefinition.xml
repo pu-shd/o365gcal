@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{01777f2f-8b59-57f2-ab03-1b0e25261755}" schemaname="o3gc_WindowFutureDays">
+  <displayname>WindowFutureDays</displayname>
+  <description>How many days ahead to mirror. Larger windows cost more Google API calls per reconcile.</description>
+  <type>100000001</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>120</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

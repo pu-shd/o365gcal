@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{bedb88bd-be6d-5c03-9b72-3f85392a0223}" schemaname="o3gc_StateSiteUrl">
+  <displayname>StateSiteUrl</displayname>
+  <description>SharePoint site URL holding the three state lists, e.g. https://contoso.sharepoint.com/sites/MyCalendarSync</description>
+  <type>100000000</type>
+  <isrequired>1</isrequired>
+  <defaultvalue></defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

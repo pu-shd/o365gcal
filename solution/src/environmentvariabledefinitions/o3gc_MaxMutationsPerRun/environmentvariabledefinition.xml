@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{8e0acabb-abe7-5dc4-bf6c-00a45663d675}" schemaname="o3gc_MaxMutationsPerRun">
+  <displayname>MaxMutationsPerRun</displayname>
+  <description>Cap on Google writes per reconcile. The connector allows 100 calls per 60 seconds; staying under it lets a backlog drain across runs instead of failing mid-batch.</description>
+  <type>100000001</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>60</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

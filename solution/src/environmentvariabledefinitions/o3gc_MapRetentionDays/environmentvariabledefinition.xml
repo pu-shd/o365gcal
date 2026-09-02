@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{5e326ab0-0bc5-57b7-8476-6e75a5732208}" schemaname="o3gc_MapRetentionDays">
+  <displayname>MapRetentionDays</displayname>
+  <description>How long a sync-map row is kept after its occurrence leaves the sync window. Pruning a row makes the automation forget it created that Google event, so this is deliberately much wider than the window.</description>
+  <type>100000001</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>400</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

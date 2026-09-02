@@ -1,0 +1,474 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_sharepointonline": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "o3gc_sharedsharepointonline"
+        },
+        "api": {
+          "name": "shared_sharepointonline"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "description": "Writes the three state lists as JSON into the state site's document library, which on a OneDrive-backed site is the user's own Files. Uses only the SharePoint connection that already owns the lists, so no new connector or connection is involved. The sync map is the file that matters: it is the only record of which Google events this automation created, and without it a reinstall mirrors the whole calendar again and can never clean up the duplicates.",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "StateSiteUrl (o3gc_StateSiteUrl)": {
+          "defaultValue": "",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_StateSiteUrl"
+          }
+        },
+        "StateListName (o3gc_StateListName)": {
+          "defaultValue": "O365GCalSyncMap",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_StateListName"
+          }
+        },
+        "LogListName (o3gc_LogListName)": {
+          "defaultValue": "O365GCalLog",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_LogListName"
+          }
+        },
+        "HealthListName (o3gc_HealthListName)": {
+          "defaultValue": "O365GCalHealth",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_HealthListName"
+          }
+        },
+        "BackupFolderName (o3gc_BackupFolderName)": {
+          "defaultValue": "O365GCal-Backups",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_BackupFolderName"
+          }
+        },
+        "BackupRetentionCount (o3gc_BackupRetentionCount)": {
+          "defaultValue": 8,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_BackupRetentionCount"
+          }
+        },
+        "AlertEmail (o3gc_AlertEmail)": {
+          "defaultValue": "",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_AlertEmail"
+          }
+        }
+      },
+      "triggers": {
+        "Every_day_at_02_00": {
+          "type": "Recurrence",
+          "recurrence": {
+            "frequency": "Day",
+            "interval": 1,
+            "schedule": {
+              "hours": [
+                "2"
+              ],
+              "minutes": [
+                0
+              ]
+            }
+          },
+          "metadata": {
+            "operationMetadataId": "9c1f4a20-3b77-4e51-9a3d-000000000007"
+          }
+        }
+      },
+      "actions": {
+        "Get_Web": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "GET",
+              "parameters/uri": "_api/web?$select=ServerRelativeUrl",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata"
+              }
+            }
+          },
+          "description": "Reads the site's server-relative path. Deriving it by string surgery on the site URL breaks on personal sites, whose path is /personal/<user> rather than /sites/<name>.",
+          "runAfter": {}
+        },
+        "Compose_Stamp": {
+          "type": "Compose",
+          "inputs": "@formatDateTime(utcNow(), 'yyyyMMddTHHmmss')",
+          "runAfter": {
+            "Get_Web": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Compose_Root": {
+          "type": "Compose",
+          "description": "Backup root inside the document library. On a OneDrive-backed site this shows up in the user's own Files, which is the point: the backup lands somewhere they can see and download without any tooling.",
+          "inputs": "@concat(body('Get_Web')?['ServerRelativeUrl'], '/Documents/', parameters('BackupFolderName (o3gc_BackupFolderName)'))",
+          "runAfter": {
+            "Compose_Stamp": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Compose_Folder": {
+          "type": "Compose",
+          "inputs": "@concat(outputs('Compose_Root'), '/', outputs('Compose_Stamp'))",
+          "runAfter": {
+            "Compose_Root": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Ensure_Root": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/folders",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(json('{}'), 'ServerRelativeUrl', outputs('Compose_Root'))"
+            }
+          },
+          "description": "Tolerates 'already exists', which is the normal case from the second run onward.",
+          "runAfter": {
+            "Compose_Folder": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Ensure_Folder": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/folders",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(json('{}'), 'ServerRelativeUrl', outputs('Compose_Folder'))"
+            }
+          },
+          "runAfter": {
+            "Ensure_Root": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Read_SyncMap": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "GET",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', 'O365GCalSyncMap', ''')/items?$top=5000')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata"
+              }
+            }
+          },
+          "description": "Reads O365GCalSyncMap. 5000 is the SharePoint threshold; the manifest records the row count so a truncated export is visible rather than silent.",
+          "runAfter": {
+            "Ensure_Folder": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        },
+        "Write_SyncMap": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "@{concat('_api/web/GetFolderByServerRelativeUrl(''', outputs('Compose_Folder'), ''')/Files/add(url=''O365GCalSyncMap.json'',overwrite=true)')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json"
+              },
+              "parameters/body": "@string(body('Read_SyncMap'))"
+            }
+          },
+          "runAfter": {
+            "Read_SyncMap": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Read_Log": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "GET",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', 'O365GCalLog', ''')/items?$top=5000')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata"
+              }
+            }
+          },
+          "description": "Reads O365GCalLog. 5000 is the SharePoint threshold; the manifest records the row count so a truncated export is visible rather than silent.",
+          "runAfter": {
+            "Write_SyncMap": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Write_Log": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "@{concat('_api/web/GetFolderByServerRelativeUrl(''', outputs('Compose_Folder'), ''')/Files/add(url=''O365GCalLog.json'',overwrite=true)')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json"
+              },
+              "parameters/body": "@string(body('Read_Log'))"
+            }
+          },
+          "runAfter": {
+            "Read_Log": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Read_Health": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "GET",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', 'O365GCalHealth', ''')/items?$top=5000')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata"
+              }
+            }
+          },
+          "description": "Reads O365GCalHealth. 5000 is the SharePoint threshold; the manifest records the row count so a truncated export is visible rather than silent.",
+          "runAfter": {
+            "Write_Log": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Write_Health": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "@{concat('_api/web/GetFolderByServerRelativeUrl(''', outputs('Compose_Folder'), ''')/Files/add(url=''O365GCalHealth.json'',overwrite=true)')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json"
+              },
+              "parameters/body": "@string(body('Read_Health'))"
+            }
+          },
+          "runAfter": {
+            "Read_Health": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Compose_Manifest": {
+          "type": "Compose",
+          "description": "Row counts are part of the manifest so a restore can tell a genuinely empty install from a failed export. A backup that cannot prove what it captured is not a backup.",
+          "inputs": "@setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'takenUtc', utcNow()), 'stateSite', parameters('StateSiteUrl (o3gc_StateSiteUrl)')), 'syncMapRows', length(coalesce(body('Read_SyncMap')?['value'], json('[]')))), 'logRows', length(coalesce(body('Read_Log')?['value'], json('[]')))), 'healthRows', length(coalesce(body('Read_Health')?['value'], json('[]'))))",
+          "runAfter": {
+            "Write_Health": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Write_Manifest": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "@{concat('_api/web/GetFolderByServerRelativeUrl(''', outputs('Compose_Folder'), ''')/Files/add(url=''manifest.json'',overwrite=true)')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json"
+              },
+              "parameters/body": "@string(outputs('Compose_Manifest'))"
+            }
+          },
+          "runAfter": {
+            "Compose_Manifest": [
+              "Succeeded"
+            ]
+          }
+        },
+        "List_Backups": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "GET",
+              "parameters/uri": "@{concat('_api/web/GetFolderByServerRelativeUrl(''', outputs('Compose_Root'), ''')/Folders?$select=Name,ServerRelativeUrl')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata"
+              }
+            }
+          },
+          "description": "Pruning runs only after a successful write, so a failed backup never removes an older good one.",
+          "runAfter": {
+            "Write_Manifest": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Prune_Old_Backups": {
+          "type": "Foreach",
+          "description": "Folder names are timestamps, so reverse name order is newest-first. Anything past the retention count is removed.",
+          "foreach": "@skip(reverse(sort(coalesce(body('List_Backups')?['value'], json('[]')), 'Name')), int(parameters('BackupRetentionCount (o3gc_BackupRetentionCount)')))",
+          "runtimeConfiguration": {
+            "concurrency": {
+              "repetitions": 1
+            }
+          },
+          "actions": {
+            "Delete_Backup_Folder": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "HttpRequest",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                  "parameters/method": "POST",
+                  "parameters/uri": "@{concat('_api/web/GetFolderByServerRelativeUrl(''', items('Prune_Old_Backups')?['ServerRelativeUrl'], ''')')}",
+                  "parameters/headers": {
+                    "Accept": "application/json;odata=nometadata",
+                    "X-HTTP-Method": "DELETE",
+                    "IF-MATCH": "*"
+                  }
+                }
+              },
+              "runAfter": {}
+            }
+          },
+          "runAfter": {
+            "List_Backups": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Log_Backup": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('LogListName (o3gc_LogListName)'), ''')/items')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'Title', guid()), 'Timestamp', utcNow()), 'FlowName', '6 Backup State'), 'Level', 'Info'), 'Operation', 'NoOp'), 'Message', concat('Backup written to ', outputs('Compose_Folder'), ': ', string(outputs('Compose_Manifest')?['syncMapRows']), ' sync-map row(s), ', string(outputs('Compose_Manifest')?['logRows']), ' log row(s).'))"
+            }
+          },
+          "runAfter": {
+            "Prune_Old_Backups": [
+              "Succeeded",
+              "Failed"
+            ]
+          }
+        }
+      },
+      "outputs": {}
+    }
+  },
+  "schemaVersion": "1.0.0.0"
+}

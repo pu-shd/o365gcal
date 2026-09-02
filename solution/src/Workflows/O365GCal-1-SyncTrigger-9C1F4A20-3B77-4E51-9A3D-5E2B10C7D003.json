@@ -1,0 +1,377 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_office365": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "o3gc_sharedoffice365"
+        },
+        "api": {
+          "name": "shared_office365"
+        }
+      },
+      "shared_sharepointonline": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "o3gc_sharedsharepointonline"
+        },
+        "api": {
+          "name": "shared_sharepointonline"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "description": "Latency optimisation only. Microsoft documents this trigger as firing for every event in a series, emitting spurious updates from internal Exchange processes, reporting Deleted for events merely outside the window, firing twice when an invitation is accepted, and lagging up to an hour. It is therefore treated as a hint: it never deletes anything and never trusts its own payload, it just asks flow 3 to look at one series sooner than the schedule would.",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "OutlookCalendarId (o3gc_OutlookCalendarId)": {
+          "defaultValue": "Calendar",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_OutlookCalendarId"
+          }
+        },
+        "StateSiteUrl (o3gc_StateSiteUrl)": {
+          "defaultValue": "",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_StateSiteUrl"
+          }
+        },
+        "StateListName (o3gc_StateListName)": {
+          "defaultValue": "O365GCalSyncMap",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_StateListName"
+          }
+        },
+        "LogListName (o3gc_LogListName)": {
+          "defaultValue": "O365GCalLog",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_LogListName"
+          }
+        },
+        "HealthListName (o3gc_HealthListName)": {
+          "defaultValue": "O365GCalHealth",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_HealthListName"
+          }
+        },
+        "WindowPastDays (o3gc_WindowPastDays)": {
+          "defaultValue": 7,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_WindowPastDays"
+          }
+        },
+        "WindowFutureDays (o3gc_WindowFutureDays)": {
+          "defaultValue": 120,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_WindowFutureDays"
+          }
+        }
+      },
+      "triggers": {
+        "When_an_event_is_added_updated_or_deleted": {
+          "type": "OpenApiConnectionNotification",
+          "description": "pastDays/incomingDays scope the trigger's own watch window; they are independent of the sync window used by flow 3.",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_office365",
+              "operationId": "CalendarGetOnChangedItemsV3",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+            },
+            "parameters": {
+              "table": "@parameters('OutlookCalendarId (o3gc_OutlookCalendarId)')",
+              "incomingDays": "@int(parameters('WindowFutureDays (o3gc_WindowFutureDays)'))",
+              "pastDays": "@int(parameters('WindowPastDays (o3gc_WindowPastDays)'))"
+            }
+          },
+          "metadata": {
+            "operationMetadataId": "9c1f4a20-3b77-4e51-9a3d-000000000003"
+          },
+          "splitOn": "@triggerOutputs()?['body/value']"
+        }
+      },
+      "actions": {
+        "Init_RunId": {
+          "runAfter": {},
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "RunId",
+                "type": "string",
+                "value": "@{guid()}"
+              }
+            ]
+          }
+        },
+        "Ignore_Deleted_Action_Type": {
+          "runAfter": {
+            "Init_RunId": [
+              "Succeeded"
+            ]
+          },
+          "type": "If",
+          "description": "The trigger reports Deleted both for genuine cancellations and for events that merely fell outside its window, and cannot distinguish them. Acting on it would delete live meetings, so deletions are left entirely to flow 3, which decides from a full",
+          "expression": {
+            "equals": [
+              "@toLower(coalesce(triggerOutputs()?['body/actionType'], ''))",
+              "deleted"
+            ]
+          },
+          "actions": {
+            "Log_Deferred_Delete": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "HttpRequest",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                  "parameters/method": "POST",
+                  "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('LogListName (o3gc_LogListName)'), ''')/items')}",
+                  "parameters/headers": {
+                    "Accept": "application/json;odata=nometadata",
+                    "Content-Type": "application/json;odata=nometadata"
+                  },
+                  "parameters/body": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'Title', variables('RunId')), 'Timestamp', utcNow()), 'FlowName', '1 Sync Outlook Trigger'), 'Level', 'Info'), 'Operation', 'Skip'), 'Message', concat('Deleted notification for ', coalesce(triggerOutputs()?['body/subject'], '(no subject)'), ' deferred to reconcile: the trigger cannot distinguish a cancellation from an event leaving its window.'))"
+                }
+              }
+            }
+          },
+          "else": {
+            "actions": {
+              "Suppress_Internal_Churn": {
+                "runAfter": {},
+                "type": "If",
+                "description": "Exchange rewrites lastModifiedDateTime for its own housekeeping. If the map row already records this timestamp, nothing user-visible changed and the whole invocation is a no-op.",
+                "expression": {
+                  "and": [
+                    {
+                      "not": {
+                        "equals": [
+                          "@coalesce(triggerOutputs()?['body/iCalUId'], '')",
+                          ""
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "actions": {
+                  "Re_expand_Affected_Occurrences": {
+                    "runAfter": {},
+                    "type": "OpenApiConnection",
+                    "description": "The trigger fires once per series master but the Google side stores one event per occurrence, so the series is re-read and expanded. Filtering by iCalUId also collapses the accept-invitation double-fire, where Outlook rewrites the event id and the same",
+                    "inputs": {
+                      "host": {
+                        "connectionName": "shared_office365",
+                        "operationId": "GetEventsCalendarViewV3",
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+                      },
+                      "parameters": {
+                        "calendarId": "@parameters('OutlookCalendarId (o3gc_OutlookCalendarId)')",
+                        "startDateTimeUtc": "@{formatDateTime(addDays(utcNow(), mul(-1, int(parameters('WindowPastDays (o3gc_WindowPastDays)')))), 'yyyy-MM-ddTHH:mm:ss')}",
+                        "endDateTimeUtc": "@{formatDateTime(addDays(utcNow(), int(parameters('WindowFutureDays (o3gc_WindowFutureDays)'))), 'yyyy-MM-ddTHH:mm:ss')}",
+                        "$filter": "@{concat('iCalUId eq ''', triggerOutputs()?['body/iCalUId'], '''')}",
+                        "$top": 250
+                      }
+                    },
+                    "operationOptions": "DisableAsyncPattern"
+                  },
+                  "Log_Fast_Path": {
+                    "runAfter": {
+                      "Re_expand_Affected_Occurrences": [
+                        "Succeeded"
+                      ]
+                    },
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "connectionName": "shared_sharepointonline",
+                        "operationId": "HttpRequest",
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                      },
+                      "parameters": {
+                        "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                        "parameters/method": "POST",
+                        "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('LogListName (o3gc_LogListName)'), ''')/items')}",
+                        "parameters/headers": {
+                          "Accept": "application/json;odata=nometadata",
+                          "Content-Type": "application/json;odata=nometadata"
+                        },
+                        "parameters/body": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'Title', variables('RunId')), 'Timestamp', utcNow()), 'FlowName', '1 Sync Outlook Trigger'), 'Level', 'Info'), 'Operation', 'NoOp'), 'Message', concat('Fast path: ', coalesce(triggerOutputs()?['body/actionType'], 'changed'), ' on ', coalesce(triggerOutputs()?['body/subject'], '(no subject)'), '; ', string(length(coalesce(body('Re_expand_Affected_Occurrences')?['value'], json('[]')))), ' occurrence(s) queued for sync.'))"
+                      }
+                    }
+                  },
+                  "For_Each_Occurrence": {
+                    "runAfter": {
+                      "Log_Fast_Path": [
+                        "Succeeded"
+                      ]
+                    },
+                    "type": "Foreach",
+                    "foreach": "@coalesce(body('Re_expand_Affected_Occurrences')?['value'], json('[]'))",
+                    "runtimeConfiguration": {
+                      "concurrency": {
+                        "repetitions": 1
+                      }
+                    },
+                    "actions": {
+                      "Compose_Key": {
+                        "runAfter": {},
+                        "type": "Compose",
+                        "inputs": "@concat(item()?['iCalUId'], '|', formatDateTime(item()?['startWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'))"
+                      },
+                      "Lookup_Row": {
+                        "runAfter": {
+                          "Compose_Key": [
+                            "Succeeded"
+                          ]
+                        },
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "host": {
+                            "connectionName": "shared_sharepointonline",
+                            "operationId": "HttpRequest",
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                          },
+                          "parameters": {
+                            "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                            "parameters/method": "GET",
+                            "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('StateListName (o3gc_StateListName)'), ''')/items?$select=Id,GoogleEventId,ContentFingerprint,SyncState&$filter=Title eq ''', outputs('Compose_Key'), '''&$top=1')}",
+                            "parameters/headers": {
+                              "Accept": "application/json;odata=nometadata"
+                            }
+                          }
+                        }
+                      },
+                      "Decide_Fast": {
+                        "runAfter": {
+                          "Lookup_Row": [
+                            "Succeeded"
+                          ]
+                        },
+                        "type": "Compose",
+                        "description": "Create only. Updates and deletions are left to flow 3, which computes the fingerprint from a consistent full read rather than from a payload the trigger may have distorted.",
+                        "inputs": "@if(equals(coalesce(first(body('Lookup_Row')?['value'])?['GoogleEventId'], ''), ''), 'Create', 'NoOp')"
+                      },
+                      "Apply_Fast_Create": {
+                        "runAfter": {
+                          "Decide_Fast": [
+                            "Succeeded"
+                          ]
+                        },
+                        "type": "If",
+                        "expression": {
+                          "equals": [
+                            "@outputs('Decide_Fast')",
+                            "Create"
+                          ]
+                        },
+                        "actions": {
+                          "Run_Apply_Event": {
+                            "runAfter": {},
+                            "type": "Workflow",
+                            "inputs": {
+                              "host": {
+                                "workflowReferenceName": "9C1F4A20-3B77-4E51-9A3D-5E2B10C7D001"
+                              },
+                              "body": {
+                                "text": "@outputs('Compose_Key')",
+                                "text_1": "Create",
+                                "text_2": "@{string(json('{\"googleEventId\":\"\"}'))}"
+                              }
+                            }
+                          }
+                        },
+                        "else": {
+                          "actions": {}
+                        },
+                        "description": "Create only, and only when nothing is mirrored yet. Updates and deletions are left to flow 3, which computes the fingerprint from a consistent full read. There is no isCancelled test because the calendar view omits cancelled occurrences outright."
+                      }
+                    }
+                  }
+                },
+                "else": {
+                  "actions": {}
+                }
+              }
+            }
+          }
+        },
+        "Stamp_Health": {
+          "runAfter": {
+            "Ignore_Deleted_Action_Type": [
+              "Succeeded",
+              "Failed",
+              "Skipped"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "description": "Heartbeat. Runs whatever the outcome, because the watchdog is watching for silence, not for failure.",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "GET",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items?$select=Id&$filter=Title eq ''1 Sync Outlook Trigger''&$top=1')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata"
+              }
+            }
+          }
+        },
+        "Write_Health": {
+          "runAfter": {
+            "Stamp_Health": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items(', string(first(body('Stamp_Health')?['value'])?['Id']), ')')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata",
+                "X-HTTP-Method": "MERGE",
+                "IF-MATCH": "*"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(json('{}'), 'LastSuccessUtc', utcNow()), 'LastRunUtc', utcNow()), 'LastRunStatus', 'Succeeded')"
+            }
+          }
+        }
+      },
+      "outputs": {}
+    }
+  },
+  "schemaVersion": "1.0.0.0"
+}

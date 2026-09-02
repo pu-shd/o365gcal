@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{bd1ffccb-38ff-50a8-a660-bacceeb119c6}" schemaname="o3gc_LogListName">
+  <displayname>LogListName</displayname>
+  <description>Title of the append-only audit log list.</description>
+  <type>100000000</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>O365GCalLog</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

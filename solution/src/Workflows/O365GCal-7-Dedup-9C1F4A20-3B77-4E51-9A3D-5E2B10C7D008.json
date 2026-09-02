@@ -1,0 +1,871 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_googlecalendar": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "o3gc_sharedgooglecalendar"
+        },
+        "api": {
+          "name": "shared_googlecalendar"
+        }
+      },
+      "shared_office365": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "o3gc_sharedoffice365"
+        },
+        "api": {
+          "name": "shared_office365"
+        }
+      },
+      "shared_sharepointonline": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "o3gc_sharedsharepointonline"
+        },
+        "api": {
+          "name": "shared_sharepointonline"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "description": "Finds and removes duplicate mirrored events and rebuilds the sync map from Google alone. For the case where the solution was removed, the sync map went with it, and a reinstall mirrored the whole calendar a second time. Every mirrored event carries o365gcal-key in its description - the same correlation key the map uses - so no backup is required. Defaults to a dry run; set the Apply toggle to delete for real. Mirrors src/o365gcal/dedup.py, whose five safety invariants are covered by tests.",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "GoogleCalendarId (o3gc_GoogleCalendarId)": {
+          "defaultValue": "primary",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_GoogleCalendarId"
+          }
+        },
+        "StateSiteUrl (o3gc_StateSiteUrl)": {
+          "defaultValue": "",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_StateSiteUrl"
+          }
+        },
+        "StateListName (o3gc_StateListName)": {
+          "defaultValue": "O365GCalSyncMap",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_StateListName"
+          }
+        },
+        "LogListName (o3gc_LogListName)": {
+          "defaultValue": "O365GCalLog",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_LogListName"
+          }
+        },
+        "AlertEmail (o3gc_AlertEmail)": {
+          "defaultValue": "",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_AlertEmail"
+          }
+        },
+        "WindowPastDays (o3gc_WindowPastDays)": {
+          "defaultValue": 7,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_WindowPastDays"
+          }
+        },
+        "WindowFutureDays (o3gc_WindowFutureDays)": {
+          "defaultValue": 120,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_WindowFutureDays"
+          }
+        },
+        "MaxDeletePercent (o3gc_MaxDeletePercent)": {
+          "defaultValue": 25,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_MaxDeletePercent"
+          }
+        },
+        "MinDeletesBeforeBreaker (o3gc_MinDeletesBeforeBreaker)": {
+          "defaultValue": 5,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_MinDeletesBeforeBreaker"
+          }
+        }
+      },
+      "triggers": {
+        "manual": {
+          "type": "Request",
+          "kind": "Button",
+          "metadata": {
+            "operationMetadataId": "9c1f4a20-3b77-4e51-9a3d-000000000008"
+          },
+          "inputs": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "boolean": {
+                  "title": "Apply deletions",
+                  "type": "boolean",
+                  "description": "Leave off for a dry run that only reports.",
+                  "x-ms-dynamically-added": true
+                }
+              }
+            }
+          }
+        }
+      },
+      "actions": {
+        "Init_RunId": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "RunId",
+                "type": "string",
+                "value": "@{guid()}"
+              }
+            ]
+          },
+          "runAfter": {}
+        },
+        "Init_Pairs": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Pairs",
+                "type": "array",
+                "value": []
+              }
+            ]
+          },
+          "runAfter": {
+            "Init_RunId": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Init_Unreadable": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Unreadable",
+                "type": "array",
+                "value": []
+              }
+            ]
+          },
+          "runAfter": {
+            "Init_Pairs": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Init_Deletes": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Deletes",
+                "type": "array",
+                "value": []
+              }
+            ]
+          },
+          "runAfter": {
+            "Init_Unreadable": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Init_Repairs": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Repairs",
+                "type": "array",
+                "value": []
+              }
+            ]
+          },
+          "runAfter": {
+            "Init_Deletes": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Init_Removed": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Removed",
+                "type": "integer",
+                "value": 0
+              }
+            ]
+          },
+          "runAfter": {
+            "Init_Repairs": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Get_Map_Rows": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "GET",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('StateListName (o3gc_StateListName)'), ''')/items?$select=Id,Title,GoogleEventId,SyncState&$top=5000')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata"
+              }
+            }
+          },
+          "description": "The map is consulted, not trusted. It may be empty - that is the situation this flow repairs - but where it does name an event, that copy is kept so a working install keeps working.",
+          "runAfter": {
+            "Init_Removed": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Compose_WindowStart": {
+          "type": "Compose",
+          "inputs": "@startOfDay(addDays(utcNow(), mul(-1, int(parameters('WindowPastDays (o3gc_WindowPastDays)')))))",
+          "runAfter": {
+            "Get_Map_Rows": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Compose_SliceCount": {
+          "type": "Compose",
+          "description": "One slice per day. ListEvents has no paging and returns arbitrary order, so the only reliable enumeration is a range small enough that one response is the whole answer.",
+          "inputs": "@add(int(parameters('WindowPastDays (o3gc_WindowPastDays)')), int(parameters('WindowFutureDays (o3gc_WindowFutureDays)')))",
+          "runAfter": {
+            "Compose_WindowStart": [
+              "Succeeded"
+            ]
+          }
+        },
+        "For_Each_Slice": {
+          "type": "Foreach",
+          "foreach": "@range(0, outputs('Compose_SliceCount'))",
+          "runtimeConfiguration": {
+            "concurrency": {
+              "repetitions": 1
+            }
+          },
+          "actions": {
+            "Google_List": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "description": "q filters to events carrying our marker. Google's text index is not read-your-writes consistent, so a very recent event may not appear - which is why this is a repair tool, not part of the sync path.",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_googlecalendar",
+                  "operationId": "ListEvents",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_googlecalendar"
+                },
+                "parameters": {
+                  "calendarId": "@parameters('GoogleCalendarId (o3gc_GoogleCalendarId)')",
+                  "timeMin": "@{formatDateTime(addDays(outputs('Compose_WindowStart'), item()), 'yyyy-MM-ddTHH:mm:ss.fffZ')}",
+                  "timeMax": "@{formatDateTime(addDays(outputs('Compose_WindowStart'), add(item(), 1)), 'yyyy-MM-ddTHH:mm:ss.fffZ')}",
+                  "q": "o365gcal-key:"
+                }
+              },
+              "operationOptions": "DisableAsyncPattern"
+            },
+            "Compose_Returned": {
+              "runAfter": {
+                "Google_List": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@length(coalesce(body('Google_List')?['items'], json('[]')))"
+            },
+            "Check_Saturated": {
+              "runAfter": {
+                "Compose_Returned": [
+                  "Succeeded"
+                ]
+              },
+              "type": "If",
+              "description": "A suspiciously full response may have been truncated and the connector gives no way to tell. Treating it as complete would delete events that merely fell off the end, so the slice is marked unreadable instead.",
+              "expression": {
+                "greaterOrEquals": [
+                  "@outputs('Compose_Returned')",
+                  250
+                ]
+              },
+              "actions": {
+                "Mark_Unreadable": {
+                  "runAfter": {},
+                  "type": "AppendToArrayVariable",
+                  "inputs": {
+                    "name": "Unreadable",
+                    "value": "@{formatDateTime(addDays(outputs('Compose_WindowStart'), item()), 'yyyy-MM-dd')}"
+                  }
+                }
+              },
+              "else": {
+                "actions": {
+                  "For_Each_Event": {
+                    "runAfter": {},
+                    "type": "Foreach",
+                    "foreach": "@coalesce(body('Google_List')?['items'], json('[]'))",
+                    "runtimeConfiguration": {
+                      "concurrency": {
+                        "repetitions": 1
+                      }
+                    },
+                    "actions": {
+                      "Check_Marked": {
+                        "runAfter": {},
+                        "type": "If",
+                        "description": "Without the marker the event is not ours - the user's own, or one whose description was edited beyond recognition. Never a deletion candidate.",
+                        "expression": {
+                          "contains": [
+                            "@coalesce(item()?['description'], '')",
+                            "o365gcal-key:"
+                          ]
+                        },
+                        "actions": {
+                          "Collect_Pair": {
+                            "runAfter": {},
+                            "type": "AppendToArrayVariable",
+                            "inputs": {
+                              "name": "Pairs",
+                              "value": {
+                                "key": "@trim(last(split(coalesce(item()?['description'], ''), 'o365gcal-key:')))",
+                                "id": "@item()?['id']",
+                                "summary": "@coalesce(item()?['summary'], '')",
+                                "htmlLink": "@coalesce(item()?['htmlLink'], '')"
+                              }
+                            }
+                          }
+                        },
+                        "else": {
+                          "actions": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "runAfter": {
+            "Compose_SliceCount": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Select_Keys": {
+          "type": "Select",
+          "inputs": {
+            "from": "@variables('Pairs')",
+            "select": "@item()?['key']"
+          },
+          "runAfter": {
+            "For_Each_Slice": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Compose_UniqueKeys": {
+          "type": "Compose",
+          "description": "union with itself is the only way to get distinct values here.",
+          "inputs": "@union(body('Select_Keys'), body('Select_Keys'))",
+          "runAfter": {
+            "Select_Keys": [
+              "Succeeded"
+            ]
+          }
+        },
+        "For_Each_Key": {
+          "type": "Foreach",
+          "foreach": "@outputs('Compose_UniqueKeys')",
+          "runtimeConfiguration": {
+            "concurrency": {
+              "repetitions": 1
+            }
+          },
+          "actions": {
+            "Filter_Group": {
+              "runAfter": {},
+              "type": "Query",
+              "inputs": {
+                "from": "@variables('Pairs')",
+                "where": "@equals(item()?['key'], items('For_Each_Key'))"
+              }
+            },
+            "Compose_Group": {
+              "runAfter": {
+                "Filter_Group": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@body('Filter_Group')"
+            },
+            "Filter_Map_Row": {
+              "runAfter": {
+                "Compose_Group": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Query",
+              "inputs": {
+                "from": "@coalesce(body('Get_Map_Rows')?['value'], json('[]'))",
+                "where": "@equals(item()?['Title'], items('For_Each_Key'))"
+              }
+            },
+            "Compose_Mapped": {
+              "runAfter": {
+                "Filter_Map_Row": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@coalesce(first(body('Filter_Map_Row'))?['GoogleEventId'], '')"
+            },
+            "Select_Group_Ids": {
+              "runAfter": {
+                "Compose_Mapped": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Select",
+              "inputs": {
+                "from": "@outputs('Compose_Group')",
+                "select": "@item()?['id']"
+              }
+            },
+            "Compose_Survivor": {
+              "runAfter": {
+                "Select_Group_Ids": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "description": "The mapped copy if it still exists, else the lowest id. Arbitrary but stable: an unstable choice would delete a different copy every run until none were left.",
+              "inputs": "@if(and(not(empty(outputs('Compose_Mapped'))), contains(body('Select_Group_Ids'), outputs('Compose_Mapped'))), outputs('Compose_Mapped'), first(sort(body('Select_Group_Ids'))))"
+            },
+            "Check_Duplicate": {
+              "runAfter": {
+                "Compose_Survivor": [
+                  "Succeeded"
+                ]
+              },
+              "type": "If",
+              "description": "Deletion requires a proven duplicate. A key with a single event is left alone even if the map disagrees about it.",
+              "expression": {
+                "greater": [
+                  "@length(outputs('Compose_Group'))",
+                  1
+                ]
+              },
+              "actions": {
+                "Filter_Extras": {
+                  "runAfter": {},
+                  "type": "Query",
+                  "description": "The survivor is excluded here, by construction rather than by a later check that could drift.",
+                  "inputs": {
+                    "from": "@outputs('Compose_Group')",
+                    "where": "@not(equals(item()?['id'], outputs('Compose_Survivor')))"
+                  }
+                },
+                "For_Each_Extra": {
+                  "runAfter": {
+                    "Filter_Extras": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Foreach",
+                  "foreach": "@body('Filter_Extras')",
+                  "runtimeConfiguration": {
+                    "concurrency": {
+                      "repetitions": 1
+                    }
+                  },
+                  "actions": {
+                    "Collect_Delete": {
+                      "runAfter": {},
+                      "type": "AppendToArrayVariable",
+                      "inputs": {
+                        "name": "Deletes",
+                        "value": {
+                          "key": "@items('For_Each_Key')",
+                          "id": "@item()?['id']",
+                          "summary": "@coalesce(item()?['summary'], '')"
+                        }
+                      }
+                    }
+                  }
+                },
+                "Filter_Survivor": {
+                  "runAfter": {
+                    "For_Each_Extra": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Query",
+                  "inputs": {
+                    "from": "@outputs('Compose_Group')",
+                    "where": "@equals(item()?['id'], outputs('Compose_Survivor'))"
+                  }
+                },
+                "Collect_Repair": {
+                  "runAfter": {
+                    "Filter_Survivor": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "AppendToArrayVariable",
+                  "inputs": {
+                    "name": "Repairs",
+                    "value": {
+                      "key": "@items('For_Each_Key')",
+                      "id": "@outputs('Compose_Survivor')",
+                      "htmlLink": "@coalesce(first(body('Filter_Survivor'))?['htmlLink'], '')"
+                    }
+                  }
+                }
+              },
+              "else": {
+                "actions": {
+                  "Check_Needs_Row": {
+                    "runAfter": {},
+                    "type": "If",
+                    "description": "A single marked event whose map row is missing or points elsewhere is exactly what a rebuild needs.",
+                    "expression": {
+                      "not": {
+                        "equals": [
+                          "@outputs('Compose_Mapped')",
+                          "@outputs('Compose_Survivor')"
+                        ]
+                      }
+                    },
+                    "actions": {
+                      "Collect_Rebuild": {
+                        "runAfter": {},
+                        "type": "AppendToArrayVariable",
+                        "inputs": {
+                          "name": "Repairs",
+                          "value": {
+                            "key": "@items('For_Each_Key')",
+                            "id": "@outputs('Compose_Survivor')",
+                            "htmlLink": "@coalesce(first(outputs('Compose_Group'))?['htmlLink'], '')"
+                          }
+                        }
+                      }
+                    },
+                    "else": {
+                      "actions": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "runAfter": {
+            "Compose_UniqueKeys": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Circuit_Breaker": {
+          "type": "If",
+          "description": "Refuses to act when the read was incomplete, or when the batch is both large in absolute terms and a large share of the mirror. This runs when things are already confused, so a partial delete is worse than none.",
+          "expression": {
+            "or": [
+              {
+                "greater": [
+                  "@length(variables('Unreadable'))",
+                  0
+                ]
+              },
+              {
+                "and": [
+                  {
+                    "greater": [
+                      "@length(variables('Deletes'))",
+                      "@int(parameters('MinDeletesBeforeBreaker (o3gc_MinDeletesBeforeBreaker)'))"
+                    ]
+                  },
+                  {
+                    "greater": [
+                      "@div(mul(length(variables('Deletes')), 100), max(length(variables('Pairs')), 1))",
+                      "@int(parameters('MaxDeletePercent (o3gc_MaxDeletePercent)'))"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "actions": {
+            "Log_Refused": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "HttpRequest",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                  "parameters/method": "POST",
+                  "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('LogListName (o3gc_LogListName)'), ''')/items')}",
+                  "parameters/headers": {
+                    "Accept": "application/json;odata=nometadata",
+                    "Content-Type": "application/json;odata=nometadata"
+                  },
+                  "parameters/body": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'Title', variables('RunId')), 'Timestamp', utcNow()), 'FlowName', '7 Dedup and Repair'), 'Level', 'Error'), 'Operation', 'Skip'), 'Message', concat('Dedup refused to delete. ', string(length(variables('Deletes'))), ' duplicate(s) found across ', string(length(variables('Pairs'))), ' marked event(s); ', string(length(variables('Unreadable'))), ' slice(s) unreadable. Nothing was removed.'))"
+                }
+              },
+              "runAfter": {}
+            },
+            "Alert_Refused": {
+              "runAfter": {
+                "Log_Refused": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_office365",
+                  "operationId": "SendEmailV2",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+                },
+                "parameters": {
+                  "emailMessage/To": "@parameters('AlertEmail (o3gc_AlertEmail)')",
+                  "emailMessage/Subject": "O365GCal: duplicate cleanup refused - review needed",
+                  "emailMessage/Body": "<p>The duplicate cleanup found <b>@{length(variables('Deletes'))}</b> duplicate event(s) among <b>@{length(variables('Pairs'))}</b> mirrored events, and <b>@{length(variables('Unreadable'))}</b> day(s) it could not read completely.</p><p><b>Nothing was deleted.</b></p><p>An unreadable day means one response may have been truncated, so a missing event cannot be told apart from a deleted one. Days affected: @{join(variables('Unreadable'), ', ')}</p><p>If the plan looks right, raise MaxDeletePercent for one run. If days were unreadable, narrow the sync window and run again.</p>",
+                  "emailMessage/Importance": "High"
+                }
+              }
+            }
+          },
+          "else": {
+            "actions": {
+              "Check_Apply": {
+                "runAfter": {},
+                "type": "If",
+                "description": "Defaults to a dry run. The Apply toggle is absent when the flow is invoked without a body, so an accidental run reports and changes nothing.",
+                "expression": {
+                  "equals": [
+                    "@coalesce(triggerBody()?['boolean'], false)",
+                    true
+                  ]
+                },
+                "actions": {
+                  "For_Each_Delete": {
+                    "runAfter": {},
+                    "type": "Foreach",
+                    "foreach": "@variables('Deletes')",
+                    "runtimeConfiguration": {
+                      "concurrency": {
+                        "repetitions": 1
+                      }
+                    },
+                    "actions": {
+                      "Google_Delete": {
+                        "runAfter": {},
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "host": {
+                            "connectionName": "shared_googlecalendar",
+                            "operationId": "DeleteEvent",
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_googlecalendar"
+                          },
+                          "parameters": {
+                            "calendarId": "@parameters('GoogleCalendarId (o3gc_GoogleCalendarId)')",
+                            "eventId": "@items('For_Each_Delete')?['id']"
+                          }
+                        },
+                        "operationOptions": "DisableAsyncPattern"
+                      },
+                      "Count_Removed": {
+                        "runAfter": {
+                          "Google_Delete": [
+                            "Succeeded",
+                            "Failed"
+                          ]
+                        },
+                        "type": "IncrementVariable",
+                        "inputs": {
+                          "name": "Removed",
+                          "value": 1
+                        },
+                        "description": "Counts a failed delete too: a 404 means the event is already gone, which is the desired end state."
+                      },
+                      "Log_Removed": {
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "host": {
+                            "connectionName": "shared_sharepointonline",
+                            "operationId": "HttpRequest",
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                          },
+                          "parameters": {
+                            "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                            "parameters/method": "POST",
+                            "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('LogListName (o3gc_LogListName)'), ''')/items')}",
+                            "parameters/headers": {
+                              "Accept": "application/json;odata=nometadata",
+                              "Content-Type": "application/json;odata=nometadata"
+                            },
+                            "parameters/body": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'Title', variables('RunId')), 'Timestamp', utcNow()), 'FlowName', '7 Dedup and Repair'), 'Level', 'Info'), 'Operation', 'Delete'), 'Message', concat('Removed duplicate ', items('For_Each_Delete')?['id'], ' of ', items('For_Each_Delete')?['key'], ' (', coalesce(items('For_Each_Delete')?['summary'], ''), ')'))"
+                          }
+                        },
+                        "runAfter": {
+                          "Count_Removed": [
+                            "Succeeded"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "For_Each_Repair": {
+                    "runAfter": {
+                      "For_Each_Delete": [
+                        "Succeeded"
+                      ]
+                    },
+                    "type": "Foreach",
+                    "description": "Rebuilds map rows for survivors. ContentFingerprint is left empty on purpose: the true value comes from Outlook, and an invented one would mark a stale event as up to date.",
+                    "foreach": "@variables('Repairs')",
+                    "runtimeConfiguration": {
+                      "concurrency": {
+                        "repetitions": 1
+                      }
+                    },
+                    "actions": {
+                      "Filter_Repair_Row": {
+                        "runAfter": {},
+                        "type": "Query",
+                        "description": "Resolves the existing row id, so the upsert can MERGE when a row exists and POST when it does not.",
+                        "inputs": {
+                          "from": "@coalesce(body('Get_Map_Rows')?['value'], json('[]'))",
+                          "where": "@equals(item()?['Title'], items('For_Each_Repair')?['key'])"
+                        }
+                      },
+                      "Upsert_Row": {
+                        "runAfter": {
+                          "Filter_Repair_Row": [
+                            "Succeeded"
+                          ]
+                        },
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "host": {
+                            "connectionName": "shared_sharepointonline",
+                            "operationId": "HttpRequest",
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                          },
+                          "parameters": {
+                            "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                            "parameters/method": "POST",
+                            "parameters/uri": "@{if(empty(coalesce(first(body('Filter_Repair_Row'))?['Id'], '')), concat('_api/web/lists/getbytitle(''', parameters('StateListName (o3gc_StateListName)'), ''')/items'), concat('_api/web/lists/getbytitle(''', parameters('StateListName (o3gc_StateListName)'), ''')/items(', string(first(body('Filter_Repair_Row'))?['Id']), ')'))}",
+                            "parameters/headers": {
+                              "Accept": "application/json;odata=nometadata",
+                              "Content-Type": "application/json;odata=nometadata"
+                            },
+                            "parameters/body": "@setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'Title', items('For_Each_Repair')?['key']), 'GoogleEventId', items('For_Each_Repair')?['id']), 'GoogleHtmlLink', items('For_Each_Repair')?['htmlLink']), 'SyncState', 'Active'), 'LastError', 'rebuilt by dedup; fingerprint pending next reconcile')"
+                          }
+                        },
+                        "description": "MERGE when a row exists, POST when it does not - the same upsert the child flow uses."
+                      }
+                    }
+                  },
+                  "Log_Applied": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "connectionName": "shared_sharepointonline",
+                        "operationId": "HttpRequest",
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                      },
+                      "parameters": {
+                        "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                        "parameters/method": "POST",
+                        "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('LogListName (o3gc_LogListName)'), ''')/items')}",
+                        "parameters/headers": {
+                          "Accept": "application/json;odata=nometadata",
+                          "Content-Type": "application/json;odata=nometadata"
+                        },
+                        "parameters/body": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'Title', variables('RunId')), 'Timestamp', utcNow()), 'FlowName', '7 Dedup and Repair'), 'Level', 'Info'), 'Operation', 'NoOp'), 'Message', concat('Dedup applied: removed ', string(variables('Removed')), ' duplicate(s), repaired ', string(length(variables('Repairs'))), ' map row(s).'))"
+                      }
+                    },
+                    "runAfter": {
+                      "For_Each_Repair": [
+                        "Succeeded"
+                      ]
+                    }
+                  }
+                },
+                "else": {
+                  "actions": {
+                    "Log_DryRun": {
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "connectionName": "shared_sharepointonline",
+                          "operationId": "HttpRequest",
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                        },
+                        "parameters": {
+                          "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                          "parameters/method": "POST",
+                          "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('LogListName (o3gc_LogListName)'), ''')/items')}",
+                          "parameters/headers": {
+                            "Accept": "application/json;odata=nometadata",
+                            "Content-Type": "application/json;odata=nometadata"
+                          },
+                          "parameters/body": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'Title', variables('RunId')), 'Timestamp', utcNow()), 'FlowName', '7 Dedup and Repair'), 'Level', 'Warn'), 'Operation', 'Skip'), 'Message', concat('DRY RUN: would remove ', string(length(variables('Deletes'))), ' duplicate(s) and repair ', string(length(variables('Repairs'))), ' map row(s) across ', string(length(variables('Pairs'))), ' marked event(s). Re-run with Apply set to yes.'))"
+                        }
+                      },
+                      "runAfter": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "runAfter": {
+            "For_Each_Key": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "outputs": {}
+    }
+  },
+  "schemaVersion": "1.0.0.0"
+}

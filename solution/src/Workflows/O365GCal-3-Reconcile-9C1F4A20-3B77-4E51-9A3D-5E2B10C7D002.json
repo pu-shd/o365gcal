@@ -1,0 +1,1087 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_office365": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "o3gc_sharedoffice365"
+        },
+        "api": {
+          "name": "shared_office365"
+        }
+      },
+      "shared_sharepointonline": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "o3gc_sharedsharepointonline"
+        },
+        "api": {
+          "name": "shared_sharepointonline"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "description": "The engine of record. Diffs the Outlook calendar view against the sync map and applies creates, updates and deletes through flow 2. Runs on a schedule because the Outlook change trigger is documented to drop events, fire spuriously and lag up to an hour; every guarantee this solution makes is delivered here, so a missed trigger costs latency and never correctness.",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "OutlookCalendarId (o3gc_OutlookCalendarId)": {
+          "defaultValue": "Calendar",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_OutlookCalendarId"
+          }
+        },
+        "StateSiteUrl (o3gc_StateSiteUrl)": {
+          "defaultValue": "",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_StateSiteUrl"
+          }
+        },
+        "StateListName (o3gc_StateListName)": {
+          "defaultValue": "O365GCalSyncMap",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_StateListName"
+          }
+        },
+        "LogListName (o3gc_LogListName)": {
+          "defaultValue": "O365GCalLog",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_LogListName"
+          }
+        },
+        "HealthListName (o3gc_HealthListName)": {
+          "defaultValue": "O365GCalHealth",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_HealthListName"
+          }
+        },
+        "WindowPastDays (o3gc_WindowPastDays)": {
+          "defaultValue": 7,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_WindowPastDays"
+          }
+        },
+        "WindowFutureDays (o3gc_WindowFutureDays)": {
+          "defaultValue": 120,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_WindowFutureDays"
+          }
+        },
+        "MaxMutationsPerRun (o3gc_MaxMutationsPerRun)": {
+          "defaultValue": 60,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_MaxMutationsPerRun"
+          }
+        },
+        "MaxDeletePercent (o3gc_MaxDeletePercent)": {
+          "defaultValue": 25,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_MaxDeletePercent"
+          }
+        },
+        "MinDeletesBeforeBreaker (o3gc_MinDeletesBeforeBreaker)": {
+          "defaultValue": 5,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_MinDeletesBeforeBreaker"
+          }
+        },
+        "TitlePrefix (o3gc_TitlePrefix)": {
+          "defaultValue": "",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_TitlePrefix"
+          }
+        },
+        "PrivacyMode (o3gc_PrivacyMode)": {
+          "defaultValue": "full",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_PrivacyMode"
+          }
+        },
+        "AlertEmail (o3gc_AlertEmail)": {
+          "defaultValue": "",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_AlertEmail"
+          }
+        },
+        "ListSizeWarnAt (o3gc_ListSizeWarnAt)": {
+          "defaultValue": 4000,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_ListSizeWarnAt"
+          }
+        }
+      },
+      "triggers": {
+        "Every_30_minutes": {
+          "type": "Recurrence",
+          "description": "Worst-case sync latency. Lower it for faster convergence at the cost of more Outlook reads.",
+          "recurrence": {
+            "frequency": "Minute",
+            "interval": 30
+          },
+          "metadata": {
+            "operationMetadataId": "9c1f4a20-3b77-4e51-9a3d-000000000002"
+          }
+        }
+      },
+      "actions": {
+        "Init_RunId": {
+          "runAfter": {},
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "RunId",
+                "type": "string",
+                "value": "@{guid()}"
+              }
+            ]
+          }
+        },
+        "Init_OutlookEvents": {
+          "runAfter": {
+            "Init_RunId": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "OutlookEvents",
+                "type": "array",
+                "value": []
+              }
+            ]
+          }
+        },
+        "Init_Skip": {
+          "runAfter": {
+            "Init_OutlookEvents": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "description": "Paging cursor. Get calendar view returns at most 256 rows per call.",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Skip",
+                "type": "integer",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "Init_MorePages": {
+          "runAfter": {
+            "Init_Skip": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "MorePages",
+                "type": "boolean",
+                "value": true
+              }
+            ]
+          }
+        },
+        "Init_MapRows": {
+          "runAfter": {
+            "Init_MorePages": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "MapRows",
+                "type": "array",
+                "value": []
+              }
+            ]
+          }
+        },
+        "Init_SeenKeys": {
+          "runAfter": {
+            "Init_MapRows": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "description": "Correlation keys present in this Outlook read. Anything active in the map and absent here is a deletion candidate.",
+          "inputs": {
+            "variables": [
+              {
+                "name": "SeenKeys",
+                "type": "array",
+                "value": []
+              }
+            ]
+          }
+        },
+        "Init_Deletes": {
+          "runAfter": {
+            "Init_SeenKeys": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Deletes",
+                "type": "array",
+                "value": []
+              }
+            ]
+          }
+        },
+        "Init_ActiveRows": {
+          "runAfter": {
+            "Init_Deletes": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "ActiveRows",
+                "type": "array",
+                "value": []
+              }
+            ]
+          }
+        },
+        "Init_Applied": {
+          "runAfter": {
+            "Init_ActiveRows": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "description": "Mutations performed this run. Compared against MaxMutationsPerRun to stay inside Google's 100-calls-per-60-seconds budget.",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Applied",
+                "type": "array",
+                "value": []
+              }
+            ]
+          }
+        },
+        "Init_Deferred": {
+          "runAfter": {
+            "Init_Applied": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Deferred",
+                "type": "integer",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "Try_Reconcile": {
+          "runAfter": {
+            "Get_Health_Row": [
+              "Succeeded"
+            ]
+          },
+          "type": "Scope",
+          "actions": {
+            "Page_Outlook_Calendar_View": {
+              "runAfter": {},
+              "type": "Until",
+              "description": "Get calendar view expands recurring series into occurrences, which is essential because the Google connector cannot create recurring events at all. It caps at 256 rows, so page until a short page comes back.",
+              "expression": "@equals(variables('MorePages'), false)",
+              "limit": {
+                "count": 40,
+                "timeout": "PT20M"
+              },
+              "actions": {
+                "Get_Calendar_View": {
+                  "runAfter": {},
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_office365",
+                      "operationId": "GetEventsCalendarViewV3",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+                    },
+                    "parameters": {
+                      "calendarId": "@parameters('OutlookCalendarId (o3gc_OutlookCalendarId)')",
+                      "startDateTimeUtc": "@{formatDateTime(addDays(utcNow(), mul(-1, int(parameters('WindowPastDays (o3gc_WindowPastDays)')))), 'yyyy-MM-ddTHH:mm:ss')}",
+                      "endDateTimeUtc": "@{formatDateTime(addDays(utcNow(), int(parameters('WindowFutureDays (o3gc_WindowFutureDays)'))), 'yyyy-MM-ddTHH:mm:ss')}",
+                      "$orderby": "start/dateTime",
+                      "$top": 250,
+                      "$skip": "@variables('Skip')"
+                    }
+                  },
+                  "operationOptions": "DisableAsyncPattern"
+                },
+                "Append_Page": {
+                  "runAfter": {
+                    "Get_Calendar_View": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Foreach",
+                  "description": "Appends per item: SetVariable cannot reference its own variable, and no append-array action exists.",
+                  "foreach": "@coalesce(body('Get_Calendar_View')?['value'], json('[]'))",
+                  "runtimeConfiguration": {
+                    "concurrency": {
+                      "repetitions": 1
+                    }
+                  },
+                  "actions": {
+                    "Append_Event": {
+                      "runAfter": {},
+                      "type": "AppendToArrayVariable",
+                      "inputs": {
+                        "name": "OutlookEvents",
+                        "value": "@item()"
+                      }
+                    }
+                  }
+                },
+                "Advance_Or_Stop": {
+                  "runAfter": {
+                    "Append_Page": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "If",
+                  "expression": {
+                    "less": [
+                      "@length(body('Get_Calendar_View')?['value'])",
+                      250
+                    ]
+                  },
+                  "actions": {
+                    "Stop_Paging": {
+                      "runAfter": {},
+                      "type": "SetVariable",
+                      "inputs": {
+                        "name": "MorePages",
+                        "value": false
+                      }
+                    }
+                  },
+                  "else": {
+                    "actions": {
+                      "Advance_Skip": {
+                        "runAfter": {},
+                        "type": "IncrementVariable",
+                        "inputs": {
+                          "name": "Skip",
+                          "value": 250
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "Guard_Outlook_Read": {
+              "runAfter": {
+                "Page_Outlook_Calendar_View": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "description": "Recorded so the log shows how many events the read produced. An unexpectedly small number is the signature the delete circuit breaker exists to catch.",
+              "inputs": "@length(variables('OutlookEvents'))"
+            },
+            "Get_Map_Rows": {
+              "runAfter": {
+                "Guard_Outlook_Read": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnection",
+              "description": "Active rows only, in one REST call rather than one SharePoint action per item.",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "HttpRequest",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                  "parameters/method": "GET",
+                  "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('StateListName (o3gc_StateListName)'), ''')/items?$select=Id,Title,GoogleEventId,ContentFingerprint,SyncState,OccurrenceStartUtc,OutlookEventId&$filter=SyncState eq ''Active''&$top=5000')}",
+                  "parameters/headers": {
+                    "Accept": "application/json;odata=nometadata"
+                  }
+                }
+              }
+            },
+            "Store_Map_Rows": {
+              "runAfter": {
+                "Get_Map_Rows": [
+                  "Succeeded"
+                ]
+              },
+              "type": "SetVariable",
+              "inputs": {
+                "name": "MapRows",
+                "value": "@coalesce(body('Get_Map_Rows')?['value'], json('[]'))"
+              }
+            },
+            "Store_Active_Rows": {
+              "runAfter": {
+                "Filter_Active_Rows": [
+                  "Succeeded"
+                ]
+              },
+              "type": "SetVariable",
+              "inputs": {
+                "name": "ActiveRows",
+                "value": "@body('Filter_Active_Rows')"
+              }
+            },
+            "For_Each_Outlook_Event": {
+              "runAfter": {
+                "Check_Map_Read_Complete": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Foreach",
+              "description": "Sequential on purpose: concurrent branches would race the Applied counter and blow through the Google throttle cap.",
+              "foreach": "@variables('OutlookEvents')",
+              "runtimeConfiguration": {
+                "concurrency": {
+                  "repetitions": 1
+                }
+              },
+              "actions": {
+                "Compose_Key": {
+                  "runAfter": {},
+                  "type": "Compose",
+                  "description": "Keyed on iCalUId, not the Graph event id: Outlook rewrites the id when an invitation is accepted, which would otherwise mirror the meeting twice.",
+                  "inputs": "@concat(item()?['iCalUId'], '|', formatDateTime(item()?['startWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'))"
+                },
+                "Compose_Hidden": {
+                  "runAfter": {
+                    "Compose_Key": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@and(equals(parameters('PrivacyMode (o3gc_PrivacyMode)'), 'busy-only'), contains(createArray('private','confidential'), coalesce(item()?['sensitivity'], 'normal')))"
+                },
+                "Compose_BodyFingerprint": {
+                  "runAfter": {
+                    "Compose_Hidden": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "description": "Graph's bodyPreview is already plain text; the expression language has no regex, so only line breaks and tabs are flattened. Matches o365gcal.normalize.body_fingerprint exactly.",
+                  "inputs": "@concat(string(length(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' ')))), ':', substring(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' ')), 0, min(256, length(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' '))))))"
+                },
+                "Compose_Subject": {
+                  "runAfter": {
+                    "Compose_BodyFingerprint": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@if(outputs('Compose_Hidden'), 'Busy', trim(concat(coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), ''), coalesce(item()?['subject'], ''))))"
+                },
+                "Compose_Fingerprint": {
+                  "runAfter": {
+                    "Compose_Subject": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "description": "Fourteen normalised fields joined by US (0x1f), a character Outlook content cannot contain. Field order must match o365gcal.normalize.fingerprint; tests/validate/test_expression_parity.py enforces it. Deliberately excludes lastModifiedDateTime, which",
+                  "inputs": "@concat(if(outputs('Compose_Hidden'), 'Busy', trim(concat(coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), ''), coalesce(item()?['subject'], '')))), decodeUriComponent('%1F'), formatDateTime(item()?['startWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'), decodeUriComponent('%1F'), formatDateTime(item()?['endWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'), decodeUriComponent('%1F'), if(coalesce(item()?['isAllDay'], false), '1', '0'), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', trim(coalesce(item()?['location'], ''))), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', concat(string(length(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' ')))), ':', substring(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' ')), 0, min(256, length(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' '))))))), decodeUriComponent('%1F'), toLower(trim(coalesce(item()?['showAs'], 'busy'))), decodeUriComponent('%1F'), coalesce(item()?['sensitivity'], 'normal'), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', toLower(concat(trim(coalesce(item()?['requiredAttendees'], '')), ';', trim(coalesce(item()?['optionalAttendees'], ''))))), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', toLower(trim(coalesce(item()?['organizer'], '')))), decodeUriComponent('%1F'), coalesce(item()?['responseType'], 'none'), decodeUriComponent('%1F'), parameters('PrivacyMode (o3gc_PrivacyMode)'))"
+                },
+                "Compose_Description": {
+                  "runAfter": {
+                    "Compose_Fingerprint": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "description": "Attendees are rendered as text, not attached as real Google attendees: a non-empty Google attendee list makes Google email an invitation to every Outlook attendee from the user's own account.",
+                  "inputs": "@if(outputs('Compose_Hidden'), concat('──────────────────────────────────', decodeUriComponent('%0A'), 'Mirrored from Outlook · edits here will be overwritten', decodeUriComponent('%0A'), 'Details hidden (private event, busy-only mode)', decodeUriComponent('%0A'), 'o365gcal-key: ', outputs('Compose_Key')), concat(if(coalesce(item()?['isHtml'], true), if(empty(coalesce(item()?['body'], '')), '', '(HTML body — open the Outlook link below to read it)'), substring(coalesce(item()?['body'], ''), 0, min(1000, length(coalesce(item()?['body'], ''))))), decodeUriComponent('%0A'), decodeUriComponent('%0A'), '──────────────────────────────────', decodeUriComponent('%0A'), 'Mirrored from Outlook · edits here will be overwritten', decodeUriComponent('%0A'), 'Organizer:     ', coalesce(item()?['organizer'], ''), decodeUriComponent('%0A'), 'Your response: ', if(equals(coalesce(item()?['responseType'], 'none'), 'notResponded'), '⚠ Not responded', if(equals(coalesce(item()?['responseType'], 'none'), 'tentativelyAccepted'), '⚠ Tentative — not confirmed', coalesce(item()?['responseType'], 'none'))), decodeUriComponent('%0A'), 'Required:      ', replace(coalesce(item()?['requiredAttendees'], ''), ';', ','), decodeUriComponent('%0A'), 'Optional:      ', replace(coalesce(item()?['optionalAttendees'], ''), ';', ','), decodeUriComponent('%0A'), 'Respond in Outlook: ', coalesce(item()?['webLink'], ''), decodeUriComponent('%0A'), 'o365gcal-key: ', outputs('Compose_Key')))"
+                },
+                "Find_Map_Row": {
+                  "runAfter": {
+                    "Filter_Map_Row": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@first(body('Filter_Map_Row'))"
+                },
+                "Record_Seen": {
+                  "runAfter": {
+                    "Find_Map_Row": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "AppendToArrayVariable",
+                  "inputs": {
+                    "name": "SeenKeys",
+                    "value": "@outputs('Compose_Key')"
+                  }
+                },
+                "Decide": {
+                  "runAfter": {
+                    "Record_Seen": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "description": "No row or no Google id -> Create. Fingerprint moved -> Update. Otherwise NoOp, the common case, costing zero Google calls. Deletion is decided after the loop from rows absent in this read: the calendar view has no cancellation flag.",
+                  "inputs": "@if(equals(coalesce(outputs('Find_Map_Row')?['GoogleEventId'], ''), ''), 'Create', if(equals(coalesce(outputs('Find_Map_Row')?['ContentFingerprint'], ''), outputs('Compose_Fingerprint')), 'NoOp', 'Update'))"
+                },
+                "Apply_If_Needed": {
+                  "runAfter": {
+                    "Compose_Payload": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "If",
+                  "description": "Second clause is the throttle cap: once the budget is spent the rest is counted and left for the next run rather than failing mid-batch.",
+                  "expression": {
+                    "and": [
+                      {
+                        "not": {
+                          "equals": [
+                            "@outputs('Decide')",
+                            "NoOp"
+                          ]
+                        }
+                      },
+                      {
+                        "less": [
+                          "@length(variables('Applied'))",
+                          "@int(parameters('MaxMutationsPerRun (o3gc_MaxMutationsPerRun)'))"
+                        ]
+                      }
+                    ]
+                  },
+                  "actions": {
+                    "Run_Apply_Event": {
+                      "runAfter": {},
+                      "type": "Workflow",
+                      "description": "Child flow 2 is the only writer to Google, which is what lets this flow and flow 1 run concurrently without duplicating events.",
+                      "inputs": {
+                        "host": {
+                          "workflowReferenceName": "9C1F4A20-3B77-4E51-9A3D-5E2B10C7D001"
+                        },
+                        "body": {
+                          "text": "@outputs('Compose_Key')",
+                          "text_1": "@outputs('Decide')",
+                          "text_2": "@{string(outputs('Compose_Payload'))}"
+                        }
+                      }
+                    },
+                    "Count_Applied": {
+                      "runAfter": {
+                        "Run_Apply_Event": [
+                          "Succeeded",
+                          "Failed",
+                          "TimedOut"
+                        ]
+                      },
+                      "type": "AppendToArrayVariable",
+                      "description": "Counts a failed apply too: it consumed budget and must not be retried into the same throttle window.",
+                      "inputs": {
+                        "name": "Applied",
+                        "value": "@outputs('Compose_Key')"
+                      }
+                    }
+                  },
+                  "else": {
+                    "actions": {
+                      "Count_Deferred": {
+                        "runAfter": {},
+                        "type": "If",
+                        "expression": {
+                          "not": {
+                            "equals": [
+                              "@outputs('Decide')",
+                              "NoOp"
+                            ]
+                          }
+                        },
+                        "actions": {
+                          "Increment_Deferred": {
+                            "runAfter": {},
+                            "type": "IncrementVariable",
+                            "inputs": {
+                              "name": "Deferred",
+                              "value": 1
+                            }
+                          }
+                        },
+                        "else": {
+                          "actions": {}
+                        }
+                      }
+                    }
+                  }
+                },
+                "Compose_Payload": {
+                  "runAfter": {
+                    "Decide": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "description": "The complete occurrence handed to child flow 2, which is the only writer.",
+                  "inputs": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'googleEventId', coalesce(outputs('Find_Map_Row')?['GoogleEventId'], '')), 'mapItemId', string(coalesce(outputs('Find_Map_Row')?['Id'], ''))), 'fingerprint', outputs('Compose_Fingerprint')), 'summary', outputs('Compose_Subject')), 'start', item()?['startWithTimeZone']), 'end', item()?['endWithTimeZone']), 'description', outputs('Compose_Description')), 'location', if(outputs('Compose_Hidden'), '', coalesce(item()?['location'], ''))), 'isAllDay', coalesce(item()?['isAllDay'], false)), 'outlookEventId', coalesce(item()?['id'], '')), 'outlookICalUId', coalesce(item()?['iCalUId'], '')), 'seriesMasterId', coalesce(item()?['seriesMasterId'], '')), 'myResponse', coalesce(item()?['responseType'], 'none'))"
+                },
+                "Filter_Map_Row": {
+                  "type": "Query",
+                  "inputs": {
+                    "from": "@variables('MapRows')",
+                    "where": "@equals(item()?['Title'], outputs('Compose_Key'))"
+                  },
+                  "runAfter": {
+                    "Compose_Description": [
+                      "Succeeded"
+                    ]
+                  }
+                }
+              }
+            },
+            "Collect_Absent_Rows": {
+              "runAfter": {
+                "Filter_Absent_Rows": [
+                  "Succeeded"
+                ]
+              },
+              "type": "SetVariable",
+              "inputs": {
+                "name": "Deletes",
+                "value": "@body('Filter_Absent_Rows')"
+              }
+            },
+            "Circuit_Breaker": {
+              "runAfter": {
+                "Collect_Absent_Rows": [
+                  "Succeeded"
+                ]
+              },
+              "type": "If",
+              "description": "Deletion is the only irreversible operation here, and it is inferred from absence. A throttled response, an expired token and a genuine mass cancellation all look identical from this side, so a batch that is both large in absolute terms and a large share",
+              "expression": {
+                "and": [
+                  {
+                    "greater": [
+                      "@length(variables('Deletes'))",
+                      "@int(parameters('MinDeletesBeforeBreaker (o3gc_MinDeletesBeforeBreaker)'))"
+                    ]
+                  },
+                  {
+                    "greater": [
+                      "@div(mul(length(variables('Deletes')), 100), max(length(variables('ActiveRows')), 1))",
+                      "@int(parameters('MaxDeletePercent (o3gc_MaxDeletePercent)'))"
+                    ]
+                  }
+                ]
+              },
+              "actions": {
+                "Log_Breaker_Tripped": {
+                  "runAfter": {},
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "HttpRequest",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                    },
+                    "parameters": {
+                      "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                      "parameters/method": "POST",
+                      "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('LogListName (o3gc_LogListName)'), ''')/items')}",
+                      "parameters/headers": {
+                        "Accept": "application/json;odata=nometadata",
+                        "Content-Type": "application/json;odata=nometadata"
+                      },
+                      "parameters/body": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'Title', variables('RunId')), 'Timestamp', utcNow()), 'FlowName', '3 Reconcile'), 'Level', 'Error'), 'Operation', 'Skip'), 'Message', concat('Refused ', string(length(variables('Deletes'))), ' deletion(s): ', string(div(mul(length(variables('Deletes')), 100), max(length(variables('ActiveRows')), 1))), '% of ', string(length(variables('ActiveRows'))), ' active mirrored events, over the ', string(parameters('MaxDeletePercent (o3gc_MaxDeletePercent)')), '% safety threshold. This usually means the Outlook read failed or returned partial data rather than a genuine mass cancellation. No events were removed from Google. Outlook returned ', string(outputs('Guard_Outlook_Read')), ' events this run.'))"
+                    }
+                  }
+                },
+                "Alert_Breaker": {
+                  "runAfter": {
+                    "Log_Breaker_Tripped": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_office365",
+                      "operationId": "SendEmailV2",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+                    },
+                    "parameters": {
+                      "emailMessage/To": "@parameters('AlertEmail (o3gc_AlertEmail)')",
+                      "emailMessage/Subject": "O365GCal: mass deletion refused - action needed",
+                      "emailMessage/Body": "<p>The calendar mirror wanted to delete <b>@{length(variables('Deletes'))}</b> of <b>@{length(variables('ActiveRows'))}</b> mirrored events in one run, which is over the safety threshold.</p><p><b>Nothing was removed from Google.</b></p><p>Outlook returned @{outputs('Guard_Outlook_Read')} events for the sync window. If that number looks wrong, the Outlook read failed rather than the meetings being cancelled - check the Office 365 Outlook connection and run the flow again.</p><p>If the cancellations are genuine, raise MaxDeletePercent for one run and let it complete, then set it back.</p>",
+                      "emailMessage/Importance": "High"
+                    }
+                  }
+                }
+              },
+              "else": {
+                "actions": {
+                  "For_Each_Delete": {
+                    "runAfter": {},
+                    "type": "Foreach",
+                    "foreach": "@variables('Deletes')",
+                    "runtimeConfiguration": {
+                      "concurrency": {
+                        "repetitions": 1
+                      }
+                    },
+                    "actions": {
+                      "Apply_Delete": {
+                        "runAfter": {},
+                        "type": "If",
+                        "expression": {
+                          "less": [
+                            "@length(variables('Applied'))",
+                            "@int(parameters('MaxMutationsPerRun (o3gc_MaxMutationsPerRun)'))"
+                          ]
+                        },
+                        "actions": {
+                          "Run_Apply_Delete": {
+                            "runAfter": {},
+                            "type": "Workflow",
+                            "inputs": {
+                              "host": {
+                                "workflowReferenceName": "9C1F4A20-3B77-4E51-9A3D-5E2B10C7D001"
+                              },
+                              "body": {
+                                "text": "@items('For_Each_Delete')?['Title']",
+                                "text_1": "Delete",
+                                "text_2": "@{string(setProperty(setProperty(json('{}'), 'googleEventId', coalesce(items('For_Each_Delete')?['GoogleEventId'], '')), 'mapItemId', string(coalesce(items('For_Each_Delete')?['Id'], ''))))}"
+                              }
+                            }
+                          },
+                          "Count_Applied_Delete": {
+                            "runAfter": {
+                              "Run_Apply_Delete": [
+                                "Succeeded",
+                                "Failed",
+                                "TimedOut"
+                              ]
+                            },
+                            "type": "AppendToArrayVariable",
+                            "inputs": {
+                              "name": "Applied",
+                              "value": "@items('For_Each_Delete')?['Title']"
+                            }
+                          }
+                        },
+                        "else": {
+                          "actions": {
+                            "Defer_Delete": {
+                              "runAfter": {},
+                              "type": "IncrementVariable",
+                              "inputs": {
+                                "name": "Deferred",
+                                "value": 1
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "Log_Run_Summary": {
+              "runAfter": {
+                "Circuit_Breaker": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnection",
+              "description": "A run truncated by the throttle cap must never read as a complete one.",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "HttpRequest",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                  "parameters/method": "POST",
+                  "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('LogListName (o3gc_LogListName)'), ''')/items')}",
+                  "parameters/headers": {
+                    "Accept": "application/json;odata=nometadata",
+                    "Content-Type": "application/json;odata=nometadata"
+                  },
+                  "parameters/body": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'Title', variables('RunId')), 'Timestamp', utcNow()), 'FlowName', '3 Reconcile'), 'Level', if(greater(variables('Deferred'), 0), 'Warn', 'Info')), 'Operation', 'NoOp'), 'Message', concat('Reconcile complete. Outlook events: ', string(outputs('Guard_Outlook_Read')), '; active map rows: ', string(length(variables('ActiveRows'))), '; mutations applied: ', string(length(variables('Applied'))), '; deferred to next run: ', string(variables('Deferred')), '.'))"
+                }
+              }
+            },
+            "Stamp_Health": {
+              "runAfter": {
+                "Log_Run_Summary": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnection",
+              "description": "The heartbeat the watchdog reads. Without it, a flow that is switched off or whose connection expired produces no signal at all.",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "HttpRequest",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                  "parameters/method": "POST",
+                  "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items(', string(first(body('Get_Health_Row')?['value'])?['Id']), ')')}",
+                  "parameters/headers": {
+                    "Accept": "application/json;odata=nometadata",
+                    "Content-Type": "application/json;odata=nometadata",
+                    "X-HTTP-Method": "MERGE",
+                    "IF-MATCH": "*"
+                  },
+                  "parameters/body": "@setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'LastSuccessUtc', utcNow()), 'LastRunUtc', utcNow()), 'LastRunStatus', 'Succeeded'), 'ConsecutiveFailures', 0), 'ItemsProcessed', length(variables('Applied')))"
+                }
+              }
+            },
+            "Check_Map_Read_Complete": {
+              "runAfter": {
+                "Store_Active_Rows": [
+                  "Succeeded"
+                ]
+              },
+              "type": "If",
+              "description": "A full page means the map read may be short. Continuing would treat unseen rows as unmirrored and mirror those events again, so the run stops instead.",
+              "expression": {
+                "greaterOrEquals": [
+                  "@length(variables('MapRows'))",
+                  5000
+                ]
+              },
+              "actions": {
+                "Log_Map_Truncated": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "HttpRequest",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                    },
+                    "parameters": {
+                      "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                      "parameters/method": "POST",
+                      "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('LogListName (o3gc_LogListName)'), ''')/items')}",
+                      "parameters/headers": {
+                        "Accept": "application/json;odata=nometadata",
+                        "Content-Type": "application/json;odata=nometadata"
+                      },
+                      "parameters/body": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'Title', variables('RunId')), 'Timestamp', utcNow()), 'FlowName', '3 Reconcile'), 'Level', 'Error'), 'Operation', 'Skip'), 'Message', concat('Aborted: the sync map read returned a full page (', string(length(variables('MapRows'))), ' rows), so it may be incomplete. Continuing would duplicate events whose rows were not read. Prune the map or raise the page size.'))"
+                    }
+                  },
+                  "runAfter": {}
+                },
+                "Alert_Map_Truncated": {
+                  "runAfter": {
+                    "Log_Map_Truncated": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_office365",
+                      "operationId": "SendEmailV2",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+                    },
+                    "parameters": {
+                      "emailMessage/To": "@parameters('AlertEmail (o3gc_AlertEmail)')",
+                      "emailMessage/Subject": "O365GCal: sync paused - bookkeeping list too large",
+                      "emailMessage/Body": "<p>The sync map now holds at least <b>@{length(variables('MapRows'))}</b> active rows, which is SharePoint's read limit. A read that large may be incomplete.</p><p><b>Syncing has paused rather than continue on partial data.</b> Continuing would treat the rows it could not see as never having been mirrored, and create a second copy of those events.</p><p>The watchdog prunes old rows automatically once a day. If this persists, reduce WindowFutureDays or MapRetentionDays.</p>",
+                      "emailMessage/Importance": "High"
+                    }
+                  }
+                },
+                "Stop_Run": {
+                  "runAfter": {
+                    "Alert_Map_Truncated": [
+                      "Succeeded",
+                      "Failed"
+                    ]
+                  },
+                  "type": "Terminate",
+                  "description": "Fails deliberately so the run shows as failed and the watchdog escalates, rather than reporting success having done nothing.",
+                  "inputs": {
+                    "runStatus": "Failed",
+                    "runError": {
+                      "code": "SyncMapReadTruncated",
+                      "message": "Sync map read may be incomplete; refusing to sync."
+                    }
+                  }
+                }
+              },
+              "else": {
+                "actions": {}
+              }
+            },
+            "Filter_Active_Rows": {
+              "type": "Query",
+              "inputs": {
+                "from": "@variables('MapRows')",
+                "where": "@not(equals(coalesce(item()?['GoogleEventId'], ''), ''))"
+              },
+              "description": "Rows we actually created something for. The denominator for the delete circuit breaker.",
+              "runAfter": {
+                "Store_Map_Rows": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Filter_Absent_Rows": {
+              "type": "Query",
+              "inputs": {
+                "from": "@variables('ActiveRows')",
+                "where": "@and(not(contains(variables('SeenKeys'), item()?['Title'])), and(greaterOrEquals(item()?['OccurrenceStartUtc'], addDays(utcNow(), mul(-1, int(parameters('WindowPastDays (o3gc_WindowPastDays)'))))), lessOrEquals(item()?['OccurrenceStartUtc'], addDays(utcNow(), int(parameters('WindowFutureDays (o3gc_WindowFutureDays)'))))))"
+              },
+              "description": "Active rows Outlook did not report, still inside the window. Out-of-window rows are excluded: ageing past the window is not a cancellation.",
+              "runAfter": {
+                "For_Each_Outlook_Event": [
+                  "Succeeded"
+                ]
+              }
+            }
+          }
+        },
+        "Get_Health_Row": {
+          "runAfter": {
+            "Init_Deferred": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "GET",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items?$select=Id&$filter=Title eq ''3 Reconcile''&$top=1')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata"
+              }
+            }
+          }
+        },
+        "Catch_Reconcile": {
+          "runAfter": {
+            "Try_Reconcile": [
+              "Failed",
+              "TimedOut"
+            ]
+          },
+          "type": "Scope",
+          "description": "Records the failure and bumps the consecutive-failure counter so the watchdog escalates after three.",
+          "actions": {
+            "Log_Reconcile_Error": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "HttpRequest",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                  "parameters/method": "POST",
+                  "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('LogListName (o3gc_LogListName)'), ''')/items')}",
+                  "parameters/headers": {
+                    "Accept": "application/json;odata=nometadata",
+                    "Content-Type": "application/json;odata=nometadata"
+                  },
+                  "parameters/body": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'Title', variables('RunId')), 'Timestamp', utcNow()), 'FlowName', '3 Reconcile'), 'Level', 'Error'), 'Message', 'Reconcile failed; see DetailJson.'), 'DetailJson', substring(string(result('Try_Reconcile')), 0, min(8000, length(string(result('Try_Reconcile'))))))"
+                }
+              }
+            },
+            "Mark_Health_Failed": {
+              "runAfter": {
+                "Log_Reconcile_Error": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "HttpRequest",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                  "parameters/method": "POST",
+                  "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items(', string(first(body('Get_Health_Row')?['value'])?['Id']), ')')}",
+                  "parameters/headers": {
+                    "Accept": "application/json;odata=nometadata",
+                    "Content-Type": "application/json;odata=nometadata",
+                    "X-HTTP-Method": "MERGE",
+                    "IF-MATCH": "*"
+                  },
+                  "parameters/body": "@setProperty(setProperty(setProperty(json('{}'), 'LastRunUtc', utcNow()), 'LastRunStatus', 'Failed'), 'ConsecutiveFailures', add(coalesce(first(body('Get_Health_Row')?['value'])?['ConsecutiveFailures'], 0), 1))"
+                }
+              }
+            }
+          }
+        }
+      },
+      "outputs": {}
+    }
+  },
+  "schemaVersion": "1.0.0.0"
+}

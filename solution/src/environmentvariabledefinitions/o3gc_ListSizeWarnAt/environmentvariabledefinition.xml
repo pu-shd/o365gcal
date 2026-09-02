@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{faf856c6-6bab-57e7-a08b-5c0085c5d555}" schemaname="o3gc_ListSizeWarnAt">
+  <displayname>ListSizeWarnAt</displayname>
+  <description>Row count at which the watchdog warns. Below SharePoint's 5000-row view threshold so the warning arrives before list reads start truncating.</description>
+  <type>100000001</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>4000</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

@@ -1,0 +1,636 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_googlecalendar": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "o3gc_sharedgooglecalendar"
+        },
+        "api": {
+          "name": "shared_googlecalendar"
+        }
+      },
+      "shared_sharepointonline": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "o3gc_sharedsharepointonline"
+        },
+        "api": {
+          "name": "shared_sharepointonline"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "description": "The only place Google Calendar CRUD happens. Called by flow 1 (fast path) and flow 3 (reconcile). Every operation is idempotent so both callers can run repeatedly and concurrently without producing duplicates.",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "GoogleCalendarId (o3gc_GoogleCalendarId)": {
+          "defaultValue": "primary",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_GoogleCalendarId"
+          }
+        },
+        "StateSiteUrl (o3gc_StateSiteUrl)": {
+          "defaultValue": "",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_StateSiteUrl"
+          }
+        },
+        "StateListName (o3gc_StateListName)": {
+          "defaultValue": "O365GCalSyncMap",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_StateListName"
+          }
+        },
+        "LogListName (o3gc_LogListName)": {
+          "defaultValue": "O365GCalLog",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_LogListName"
+          }
+        },
+        "DryRun (o3gc_DryRun)": {
+          "defaultValue": false,
+          "type": "Bool",
+          "metadata": {
+            "schemaName": "o3gc_DryRun"
+          }
+        }
+      },
+      "triggers": {
+        "manual": {
+          "type": "Request",
+          "kind": "Button",
+          "metadata": {
+            "operationMetadataId": "9c1f4a20-3b77-4e51-9a3d-000000000001"
+          },
+          "inputs": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "title": "CorrelationKey",
+                  "type": "string",
+                  "description": "{iCalUId}|{occurrenceStartUtc}",
+                  "x-ms-dynamically-added": true
+                },
+                "text_1": {
+                  "title": "Operation",
+                  "type": "string",
+                  "description": "Create | Update | Delete",
+                  "x-ms-dynamically-added": true
+                },
+                "text_2": {
+                  "title": "PayloadJson",
+                  "type": "string",
+                  "description": "Serialised occurrence: googleEventId, mapItemId, fingerprint, summary, start, end, description, location, attendees, isAllDay, outlookEventId, outlookICalUId, seriesMasterId, attendeeSummary, myResponse, lastModifiedUtc",
+                  "x-ms-dynamically-added": true
+                }
+              },
+              "required": [
+                "text",
+                "text_1",
+                "text_2"
+              ]
+            }
+          }
+        }
+      },
+      "actions": {
+        "Init_RunId": {
+          "runAfter": {},
+          "type": "InitializeVariable",
+          "description": "Ties every log row from this invocation together.",
+          "inputs": {
+            "variables": [
+              {
+                "name": "RunId",
+                "type": "string",
+                "value": "@{guid()}"
+              }
+            ]
+          }
+        },
+        "Init_GoogleEventId": {
+          "runAfter": {
+            "Init_RunId": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "description": "Populated on create, reused for the map write. Empty means nothing exists on Google yet.",
+          "inputs": {
+            "variables": [
+              {
+                "name": "GoogleEventId",
+                "type": "string",
+                "value": "@{coalesce(json(triggerBody()?['text_2'])?['googleEventId'], '')}"
+              }
+            ]
+          }
+        },
+        "Init_GoogleHtmlLink": {
+          "runAfter": {
+            "Init_GoogleEventId": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "GoogleHtmlLink",
+                "type": "string",
+                "value": ""
+              }
+            ]
+          }
+        },
+        "Payload": {
+          "runAfter": {
+            "Init_GoogleHtmlLink": [
+              "Succeeded"
+            ]
+          },
+          "type": "Compose",
+          "description": "One JSON blob rather than twenty child-flow inputs: readable in run history and cheap to extend.",
+          "inputs": "@json(triggerBody()?['text_2'])"
+        },
+        "Check_DryRun": {
+          "runAfter": {
+            "Payload": [
+              "Succeeded"
+            ]
+          },
+          "type": "If",
+          "description": "DryRun records the intended change and performs no Google write. Used for the first run after install.",
+          "expression": {
+            "equals": [
+              "@parameters('DryRun (o3gc_DryRun)')",
+              true
+            ]
+          },
+          "actions": {
+            "Log_DryRun": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "HttpRequest",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                  "parameters/method": "POST",
+                  "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('LogListName (o3gc_LogListName)'), ''')/items')}",
+                  "parameters/headers": {
+                    "Accept": "application/json;odata=nometadata",
+                    "Content-Type": "application/json;odata=nometadata"
+                  },
+                  "parameters/body": "@{json(concat('{\"Title\":\"', variables('RunId'), '\",\"Timestamp\":\"', utcNow(), '\",\"FlowName\":\"2 Apply Event\",\"Level\":\"Info\",\"Operation\":\"Skip\",\"CorrelationKey\":\"', triggerBody()?['text'], '\",\"Message\":\"DRY RUN: would ', triggerBody()?['text_1'], '\"}'))}"
+                }
+              }
+            }
+          },
+          "else": {
+            "actions": {
+              "Try_Apply": {
+                "runAfter": {},
+                "type": "Scope",
+                "description": "All Google mutation lives here so a single Catch can cover every branch.",
+                "actions": {
+                  "Switch_Operation": {
+                    "runAfter": {},
+                    "type": "Switch",
+                    "expression": "@triggerBody()?['text_1']",
+                    "default": {
+                      "actions": {
+                        "Log_Unknown_Operation": {
+                          "runAfter": {},
+                          "type": "Compose",
+                          "inputs": "@{concat('Unknown operation: ', triggerBody()?['text_1'])}"
+                        },
+                        "Fail_Unknown_Operation": {
+                          "runAfter": {
+                            "Log_Unknown_Operation": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Terminate",
+                          "description": "Fail loudly. A silently ignored operation would look like a successful sync.",
+                          "inputs": {
+                            "runStatus": "Failed",
+                            "runError": {
+                              "code": "UnknownOperation",
+                              "message": "@{outputs('Log_Unknown_Operation')}"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "cases": {
+                      "Case_Create": {
+                        "case": "Create",
+                        "actions": {
+                          "Google_Create": {
+                            "runAfter": {},
+                            "type": "OpenApiConnection",
+                            "description": "Google's CreateEvent takes its body under `newEvent`, not the `item` convention other connectors use.",
+                            "inputs": {
+                              "host": {
+                                "connectionName": "shared_googlecalendar",
+                                "operationId": "CreateEvent",
+                                "apiId": "/providers/Microsoft.PowerApps/apis/shared_googlecalendar"
+                              },
+                              "parameters": {
+                                "calendarId": "@parameters('GoogleCalendarId (o3gc_GoogleCalendarId)')",
+                                "newEvent/summary": "@{outputs('Payload')?['summary']}",
+                                "newEvent/start": "@{outputs('Payload')?['start']}",
+                                "newEvent/end": "@{outputs('Payload')?['end']}",
+                                "newEvent/description": "@{outputs('Payload')?['description']}",
+                                "newEvent/location": "@{outputs('Payload')?['location']}",
+                                "newEvent/status": "confirmed",
+                                "newEvent/isAllDay": "@outputs('Payload')?['isAllDay']"
+                              }
+                            },
+                            "operationOptions": "DisableAsyncPattern"
+                          },
+                          "Set_Created_Id": {
+                            "runAfter": {
+                              "Google_Create": [
+                                "Succeeded"
+                              ]
+                            },
+                            "type": "SetVariable",
+                            "inputs": {
+                              "name": "GoogleEventId",
+                              "value": "@{body('Google_Create')?['id']}"
+                            }
+                          },
+                          "Set_Created_Link": {
+                            "runAfter": {
+                              "Set_Created_Id": [
+                                "Succeeded"
+                              ]
+                            },
+                            "type": "SetVariable",
+                            "inputs": {
+                              "name": "GoogleHtmlLink",
+                              "value": "@{body('Google_Create')?['htmlLink']}"
+                            }
+                          }
+                        }
+                      },
+                      "Case_Update": {
+                        "case": "Update",
+                        "actions": {
+                          "Try_Update": {
+                            "runAfter": {},
+                            "type": "Scope",
+                            "actions": {
+                              "Google_Update": {
+                                "runAfter": {},
+                                "type": "OpenApiConnection",
+                                "inputs": {
+                                  "host": {
+                                    "connectionName": "shared_googlecalendar",
+                                    "operationId": "UpdateEvent",
+                                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_googlecalendar"
+                                  },
+                                  "parameters": {
+                                    "calendarId": "@parameters('GoogleCalendarId (o3gc_GoogleCalendarId)')",
+                                    "eventId": "@{variables('GoogleEventId')}",
+                                    "updatedEvent/summary": "@{outputs('Payload')?['summary']}",
+                                    "updatedEvent/start": "@{outputs('Payload')?['start']}",
+                                    "updatedEvent/end": "@{outputs('Payload')?['end']}",
+                                    "updatedEvent/description": "@{outputs('Payload')?['description']}",
+                                    "updatedEvent/location": "@{outputs('Payload')?['location']}",
+                                    "updatedEvent/status": "confirmed",
+                                    "updatedEvent/isAllDay": "@outputs('Payload')?['isAllDay']"
+                                  }
+                                },
+                                "operationOptions": "DisableAsyncPattern",
+                                "description": "UpdateEvent is a PATCH, so omitted fields would be left untouched. The full field set is sent every time anyway: this is a mirror, so a location cleared in Outlook must be cleared on Google rather than silently kept."
+                              }
+                            }
+                          },
+                          "Repair_Missing_Google_Event": {
+                            "runAfter": {
+                              "Try_Update": [
+                                "Failed",
+                                "TimedOut"
+                              ]
+                            },
+                            "type": "Scope",
+                            "description": "The mirrored event was deleted directly in Google. Re-create it and re-point the map row, instead of retrying a dead id every 30 minutes forever.",
+                            "actions": {
+                              "Google_Recreate": {
+                                "runAfter": {},
+                                "type": "OpenApiConnection",
+                                "inputs": {
+                                  "host": {
+                                    "connectionName": "shared_googlecalendar",
+                                    "operationId": "CreateEvent",
+                                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_googlecalendar"
+                                  },
+                                  "parameters": {
+                                    "calendarId": "@parameters('GoogleCalendarId (o3gc_GoogleCalendarId)')",
+                                    "newEvent/summary": "@{outputs('Payload')?['summary']}",
+                                    "newEvent/start": "@{outputs('Payload')?['start']}",
+                                    "newEvent/end": "@{outputs('Payload')?['end']}",
+                                    "newEvent/description": "@{outputs('Payload')?['description']}",
+                                    "newEvent/location": "@{outputs('Payload')?['location']}",
+                                    "newEvent/status": "confirmed",
+                                    "newEvent/isAllDay": "@outputs('Payload')?['isAllDay']"
+                                  }
+                                },
+                                "operationOptions": "DisableAsyncPattern"
+                              },
+                              "Set_Repaired_Id": {
+                                "runAfter": {
+                                  "Google_Recreate": [
+                                    "Succeeded"
+                                  ]
+                                },
+                                "type": "SetVariable",
+                                "inputs": {
+                                  "name": "GoogleEventId",
+                                  "value": "@{body('Google_Recreate')?['id']}"
+                                }
+                              },
+                              "Set_Repaired_Link": {
+                                "runAfter": {
+                                  "Set_Repaired_Id": [
+                                    "Succeeded"
+                                  ]
+                                },
+                                "type": "SetVariable",
+                                "inputs": {
+                                  "name": "GoogleHtmlLink",
+                                  "value": "@{body('Google_Recreate')?['htmlLink']}"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "Case_Delete": {
+                        "case": "Delete",
+                        "actions": {
+                          "Guard_Has_Google_Id": {
+                            "runAfter": {},
+                            "type": "If",
+                            "description": "We only ever delete an id we recorded ourselves, so events created natively in Google are never touched.",
+                            "expression": {
+                              "not": {
+                                "equals": [
+                                  "@variables('GoogleEventId')",
+                                  ""
+                                ]
+                              }
+                            },
+                            "actions": {
+                              "Try_Delete": {
+                                "runAfter": {},
+                                "type": "Scope",
+                                "actions": {
+                                  "Google_Delete": {
+                                    "runAfter": {},
+                                    "type": "OpenApiConnection",
+                                    "inputs": {
+                                      "host": {
+                                        "connectionName": "shared_googlecalendar",
+                                        "operationId": "DeleteEvent",
+                                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_googlecalendar"
+                                      },
+                                      "parameters": {
+                                        "calendarId": "@parameters('GoogleCalendarId (o3gc_GoogleCalendarId)')",
+                                        "eventId": "@{variables('GoogleEventId')}"
+                                      }
+                                    },
+                                    "operationOptions": "DisableAsyncPattern"
+                                  }
+                                }
+                              },
+                              "Tolerate_Already_Gone": {
+                                "runAfter": {
+                                  "Try_Delete": [
+                                    "Failed",
+                                    "TimedOut"
+                                  ]
+                                },
+                                "type": "Compose",
+                                "description": "404/410 means the event is already absent, which is the desired end state. Treated as success so the map row still flips to Deleted.",
+                                "inputs": "Google event already absent; treated as deleted."
+                              }
+                            },
+                            "else": {
+                              "actions": {}
+                            }
+                          },
+                          "Clear_Google_Id": {
+                            "runAfter": {
+                              "Guard_Has_Google_Id": [
+                                "Succeeded"
+                              ]
+                            },
+                            "type": "SetVariable",
+                            "inputs": {
+                              "name": "GoogleEventId",
+                              "value": ""
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "Write_Map_Row": {
+                    "runAfter": {
+                      "Switch_Operation": [
+                        "Succeeded"
+                      ]
+                    },
+                    "type": "OpenApiConnection",
+                    "description": "Upsert the sync-map row. MERGE when we already know the item id, POST otherwise. Uses SharePoint REST via the Standard 'Send an HTTP request to SharePoint' action rather than the premium generic HTTP action.",
+                    "inputs": {
+                      "host": {
+                        "connectionName": "shared_sharepointonline",
+                        "operationId": "HttpRequest",
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                      },
+                      "parameters": {
+                        "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                        "parameters/method": "POST",
+                        "parameters/uri": "@{if(empty(coalesce(outputs('Payload')?['mapItemId'], '')), concat('_api/web/lists/getbytitle(''', parameters('StateListName (o3gc_StateListName)'), ''')/items'), concat('_api/web/lists/getbytitle(''', parameters('StateListName (o3gc_StateListName)'), ''')/items(', outputs('Payload')?['mapItemId'], ')'))}",
+                        "parameters/headers": "@if(empty(coalesce(outputs('Payload')?['mapItemId'], '')), json('{\"Accept\":\"application/json;odata=nometadata\",\"Content-Type\":\"application/json;odata=nometadata\"}'), json('{\"Accept\":\"application/json;odata=nometadata\",\"Content-Type\":\"application/json;odata=nometadata\",\"X-HTTP-Method\":\"MERGE\",\"IF-MATCH\":\"*\"}'))",
+                        "parameters/body": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'Title', triggerBody()?['text']), 'OutlookEventId', coalesce(outputs('Payload')?['outlookEventId'], '')), 'OutlookICalUId', coalesce(outputs('Payload')?['outlookICalUId'], '')), 'OutlookSeriesMasterId', coalesce(outputs('Payload')?['seriesMasterId'], '')), 'OccurrenceStartUtc', coalesce(outputs('Payload')?['start'], '')), 'GoogleEventId', variables('GoogleEventId')), 'ContentFingerprint', coalesce(outputs('Payload')?['fingerprint'], '')), 'SyncState', if(equals(triggerBody()?['text_1'], 'Delete'), 'Deleted', 'Active')), 'LastSyncedUtc', utcNow()), 'ErrorCount', 0)"
+                      }
+                    }
+                  },
+                  "Log_Success": {
+                    "runAfter": {
+                      "Write_Map_Row": [
+                        "Succeeded"
+                      ]
+                    },
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "connectionName": "shared_sharepointonline",
+                        "operationId": "HttpRequest",
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                      },
+                      "parameters": {
+                        "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                        "parameters/method": "POST",
+                        "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('LogListName (o3gc_LogListName)'), ''')/items')}",
+                        "parameters/headers": {
+                          "Accept": "application/json;odata=nometadata",
+                          "Content-Type": "application/json;odata=nometadata"
+                        },
+                        "parameters/body": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'Title', variables('RunId')), 'Timestamp', utcNow()), 'FlowName', '2 Apply Event'), 'Level', 'Info'), 'Operation', triggerBody()?['text_1']), 'CorrelationKey', triggerBody()?['text']), 'GoogleEventId', variables('GoogleEventId')), 'Message', concat(triggerBody()?['text_1'], ' applied: ', coalesce(outputs('Payload')?['summary'], '')))"
+                      }
+                    }
+                  }
+                }
+              },
+              "Catch_Apply": {
+                "runAfter": {
+                  "Try_Apply": [
+                    "Failed",
+                    "TimedOut",
+                    "Skipped"
+                  ]
+                },
+                "type": "Scope",
+                "description": "Records the failure and returns without rethrowing, so one poisoned event cannot stall the whole reconcile batch.",
+                "actions": {
+                  "Log_Error": {
+                    "runAfter": {},
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "connectionName": "shared_sharepointonline",
+                        "operationId": "HttpRequest",
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                      },
+                      "parameters": {
+                        "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                        "parameters/method": "POST",
+                        "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('LogListName (o3gc_LogListName)'), ''')/items')}",
+                        "parameters/headers": {
+                          "Accept": "application/json;odata=nometadata",
+                          "Content-Type": "application/json;odata=nometadata"
+                        },
+                        "parameters/body": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'Title', variables('RunId')), 'Timestamp', utcNow()), 'FlowName', '2 Apply Event'), 'Level', 'Error'), 'Operation', triggerBody()?['text_1']), 'CorrelationKey', triggerBody()?['text']), 'DetailJson', string(result('Try_Apply')))"
+                      }
+                    }
+                  },
+                  "Mark_Row_Error": {
+                    "runAfter": {
+                      "Log_Error": [
+                        "Succeeded"
+                      ]
+                    },
+                    "type": "If",
+                    "description": "Only possible when the row already exists; a failed create has no row to mark.",
+                    "expression": {
+                      "not": {
+                        "equals": [
+                          "@coalesce(outputs('Payload')?['mapItemId'], '')",
+                          ""
+                        ]
+                      }
+                    },
+                    "actions": {
+                      "SP_Mark_Error": {
+                        "runAfter": {},
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "host": {
+                            "connectionName": "shared_sharepointonline",
+                            "operationId": "HttpRequest",
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                          },
+                          "parameters": {
+                            "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                            "parameters/method": "POST",
+                            "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('StateListName (o3gc_StateListName)'), ''')/items(', outputs('Payload')?['mapItemId'], ')')}",
+                            "parameters/headers": {
+                              "Accept": "application/json;odata=nometadata",
+                              "Content-Type": "application/json;odata=nometadata",
+                              "X-HTTP-Method": "MERGE",
+                              "IF-MATCH": "*"
+                            },
+                            "parameters/body": "@setProperty(setProperty(json('{}'), 'SyncState', 'Error'), 'LastError', substring(string(result('Try_Apply')), 0, min(4000, length(string(result('Try_Apply'))))))"
+                          }
+                        }
+                      }
+                    },
+                    "else": {
+                      "actions": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "Respond_to_the_calling_flow": {
+          "runAfter": {
+            "Check_DryRun": [
+              "Succeeded",
+              "Failed",
+              "Skipped",
+              "TimedOut"
+            ]
+          },
+          "type": "Response",
+          "kind": "PowerApp",
+          "description": "Required, not decorative: Power Automate refuses to activate any parent that calls a child flow without a response action (ChildFlowMissingResponseOperation). It also runs after every outcome of the apply scope, so a failure on one event returns a result",
+          "inputs": {
+            "statusCode": 200,
+            "body": {
+              "correlationKey": "@{triggerBody()?['text']}",
+              "operation": "@{triggerBody()?['text_1']}",
+              "googleEventId": "@{variables('GoogleEventId')}",
+              "runId": "@{variables('RunId')}"
+            },
+            "schema": {
+              "type": "object",
+              "properties": {
+                "correlationKey": {
+                  "type": "string"
+                },
+                "operation": {
+                  "type": "string"
+                },
+                "googleEventId": {
+                  "type": "string"
+                },
+                "runId": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "outputs": {}
+    }
+  },
+  "schemaVersion": "1.0.0.0"
+}

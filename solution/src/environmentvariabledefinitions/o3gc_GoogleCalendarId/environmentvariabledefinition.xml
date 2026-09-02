@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{899e96ea-1914-56f4-990e-7a17ec491372}" schemaname="o3gc_GoogleCalendarId">
+  <displayname>GoogleCalendarId</displayname>
+  <description>Target Google calendar ID. 'primary' is the signed-in Google account's main calendar; otherwise the long ...@group.calendar.google.com ID from flow 0 Setup.</description>
+  <type>100000000</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>primary</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{11929729-977b-5576-b288-866c16b0a2c2}" schemaname="o3gc_WindowPastDays">
+  <displayname>WindowPastDays</displayname>
+  <description>How many days into the past to mirror. Events older than this are left alone, never deleted.</description>
+  <type>100000001</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>7</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

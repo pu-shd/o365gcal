@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{10c81f11-d75d-5cdb-97af-2b8681ee4b44}" schemaname="o3gc_DryRun">
+  <displayname>DryRun</displayname>
+  <description>When on, flows log every intended change but perform no Google writes. Use for the first run.</description>
+  <type>100000002</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>no</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

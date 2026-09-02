@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{242fabd1-8e3a-5f7b-8e00-668de3c37f09}" schemaname="o3gc_HeartbeatStaleMinutes">
+  <displayname>HeartbeatStaleMinutes</displayname>
+  <description>Watchdog threshold. Alerts if a flow has not recorded a successful run within this many minutes.</description>
+  <type>100000001</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>90</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>
