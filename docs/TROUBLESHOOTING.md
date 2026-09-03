@@ -25,7 +25,7 @@ next reconcile rebuild it.
 
 ## An event changed in Outlook but not on Google
 
-Wait one reconcile cycle (30 minutes by default). If it still has not moved, find the
+Wait one reconcile cycle (15 minutes by default). If it still has not moved, find the
 event's row in `O365GCalSyncMap` and compare `ContentFingerprint` against what you
 expect. If it is unchanged, the edit was in a field the fingerprint does not track.
 
@@ -84,7 +84,7 @@ That is the case the watchdog cannot cover, because it may itself be off. Check:
 
 ## Private events are showing details I wanted hidden
 
-Set `PrivacyMode` to `busy-only`. Events marked Private or Confidential in Outlook then
+Turn on `HidePrivateEventDetails`. Events marked Private or Confidential in Outlook then
 appear on Google as `Busy` with no subject, location, body or attendees.
 
 Changing this rewrites every mirrored event on the next reconcile, by design.

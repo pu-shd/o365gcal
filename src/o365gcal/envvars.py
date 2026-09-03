@@ -80,8 +80,10 @@ CATALOGUE: list[EnvVar] = [
     EnvVar("TitlePrefix", STRING, "none",
            "Prefix for mirrored event titles, e.g. '[Outlook] '. The literal word "
            "'none' means no prefix."),
-    EnvVar("PrivacyMode", STRING, "full",
-           "'full' mirrors all details. 'busy-only' mirrors private and confidential events as an opaque 'Busy' block with no subject, location or attendees."),
+    EnvVar("HidePrivateEventDetails", BOOLEAN, "no",
+           "When on, events marked Private or Confidential in Outlook appear on "
+           "Google as an opaque 'Busy' block with no subject, location, body or "
+           "attendees. Everything else is mirrored in full either way."),
     EnvVar("MaxMutationsPerRun", NUMBER, "60",
            "Cap on Google writes per reconcile. The connector allows 100 calls per 60 seconds; staying under it lets a backlog drain across runs instead of failing mid-batch."),
     EnvVar("MaxDeletePercent", NUMBER, "25",

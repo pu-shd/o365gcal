@@ -3,7 +3,7 @@ SHELL := /bin/zsh
 VENV := .venv
 PY := $(VENV)/bin/python
 
-.PHONY: help venv test test-docker build bootstrap status state backup dedup dedup-apply update teardown export preflight swagger clean
+.PHONY: help venv test test-docker build install configure bootstrap status state backup dedup dedup-apply update teardown export preflight swagger clean
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n",$$1,$$2}'
@@ -28,7 +28,13 @@ swagger: ## Fetch live connector swagger to enable connector contract tests
 build: ## Pack managed + unmanaged solution zips into dist/
 	@./scripts/build.sh
 
-bootstrap: ## Guided first-time install (what you hand to a new user)
+install: ## One-command guided install (what you hand to a new user)
+	@./scripts/install.sh
+
+configure: ## See and change settings in plain language
+	@./scripts/configure.sh
+
+bootstrap: ## Scripted install from a saved settings file (for repeat installs)
 	@./scripts/bootstrap.sh
 
 status: ## Show what is installed and whether it is healthy

@@ -23,6 +23,11 @@ done
 print -P "%B O365GCal - Outlook to Google calendar mirror %b"
 print -P "%F{242} A guided install. Nothing is changed until you are asked to confirm.%f"
 print ""
+if (( ! NONINTERACTIVE )); then
+  print -P "%F{242} If this is your first install, ./scripts/install.sh is friendlier:%f"
+  print -P "%F{242} it picks the bookkeeping location and the Google calendar for you.%f"
+  print ""
+fi
 
 # ---------------------------------------------------------------- 1. tooling
 info "Step 1/6  Checking prerequisites"

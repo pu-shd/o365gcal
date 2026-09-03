@@ -132,7 +132,7 @@ Three SharePoint lists on a site the user nominates:
 
 The sync map holds meeting subjects only indirectly — the fingerprint contains subject
 and attendee text. Treat the site as holding calendar metadata and set its permissions
-accordingly. Under `PrivacyMode=busy-only`, private events contribute no subject,
+accordingly. Under `HidePrivateEventDetails` on, private events contribute no subject,
 location or attendee data to any of it.
 
 ## Verifying an install

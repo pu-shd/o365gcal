@@ -190,7 +190,9 @@ class Config:
     dry_run: bool = False
     #: "none" is the sentinel for no prefix; see normalize.NO_PREFIX.
     title_prefix: str = "none"
-    privacy_mode: str = "full"  # full | busy-only
+    #: When true, private and confidential events mirror as an opaque "Busy" block.
+    #: A Yes/No toggle rather than a string you have to spell exactly.
+    hide_private_event_details: bool = False
     max_mutations_per_run: int = 60
     max_delete_percent: int = 25
     #: Absolute floor below which the percentage rule is not applied. Without it, a

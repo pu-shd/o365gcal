@@ -39,136 +39,63 @@ whoever administers Power Platform for your organisation.
 
 ---
 
-## Step 1 — Import the solution
-
-### The easy way
+## The short version
 
 ```zsh
-pac auth create --environment <your environment URL>
-./scripts/bootstrap.sh
+pac auth create          # sign in, opens a browser
+./scripts/install.sh
 ```
 
-`bootstrap.sh` walks the whole thing: it checks your tooling, confirms your three
-connections are healthy, asks the three questions from step 3, installs with those
-answers already applied, and tells you what to do next. It changes nothing until you
-confirm, and it is safe to re-run — if something is already in place it says so and
-resumes rather than starting over.
+`install.sh` does everything else: it works out where to keep its bookkeeping, checks
+your accounts are linked, installs, switches everything on, lets you pick the Google
+calendar **from a numbered list**, and then does a practice run that writes nothing so
+you can see the plan before approving it.
 
-It also saves your answers to `o365gcal.settings.json`, so a reinstall later is just:
+You never need to open Power Automate or SharePoint, find a site address, or paste a
+calendar identifier.
+
+If a tool is missing it tells you the one command to install it and stops. If your
+accounts are not linked yet it gives you the single page to visit — that part has to
+happen in a browser once, because it involves signing in to Google.
+
+## Changing settings afterwards
 
 ```zsh
-./scripts/bootstrap.sh --settings o365gcal.settings.json
+./scripts/configure.sh                 # see everything, in plain words
+./scripts/configure.sh notify on       # email me on every change
+./scripts/configure.sh dryrun on       # back to practice mode
+./scripts/configure.sh private on      # hide details of private events
+./scripts/configure.sh calendar        # pick a different Google calendar
+./scripts/configure.sh window 7 120    # days back, days ahead
 ```
 
-**If bootstrap did the work for you, skip to step 4.**
-
-### Through the browser instead
-
-1. [make.powerautomate.com](https://make.powerautomate.com) → **Solutions** →
-   **Import solution**.
-2. Choose `dist/O365GCal_managed.zip` → **Next**.
-
-## Step 2 — Connect your accounts
-
-The importer asks for three connections. Create or pick one for each:
-
-| Connection | Sign in as |
-|---|---|
-| Office 365 Outlook | your work account |
-| Google Calendar | the Google account that owns the target calendar |
-| SharePoint | your work account |
-
-> **Careful:** pick **Office 365 Outlook**, not **Outlook.com**. They look similar in
-> the picker and are different services. Outlook.com is the personal one and will not
-> work here.
-
-## Step 3 — Fill in the settings
-
-Open the solution → **Environment variables**. You must set three:
-
-| Setting | What to put |
-|---|---|
-| `StateSiteUrl` | The SharePoint site for bookkeeping, e.g. `https://contoso.sharepoint.com/sites/MyCalendarSync` |
-| `AlertEmail` | Where digests and warnings go. Usually your own address. |
-| `GoogleCalendarId` | `primary` for your main Google calendar, or a specific ID (step 4 shows you the options) |
-
-Leave everything else alone for now. In particular leave **`DryRun` switched on** — it
-lets the first run show you what it *would* do without touching anything.
-
-The rest, for later:
+Changes take effect on the next run. No reinstall, no portal.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `OutlookCalendarId` | `Calendar` | Which Outlook calendar to mirror |
-| `WindowPastDays` / `WindowFutureDays` | 7 / 120 | How far back and ahead to mirror |
-| `TitlePrefix` | *(empty)* | Prefix on mirrored titles, e.g. `[Outlook] ` |
-| `PrivacyMode` | `full` | `busy-only` hides subject, location and attendees for private events |
-| `CopyAttendeesAsGoogleAttendees` | off | **Leave off.** See the warning below. |
-| `MaxMutationsPerRun` | 60 | Google write cap per run |
-| `MaxDeletePercent` | 25 | Refuses suspiciously large deletion batches |
-| `HeartbeatStaleMinutes` | 90 | How long silence lasts before you get warned |
+| `dryrun` | off | Practice mode: logs what it would do, writes nothing |
+| `notify` | off | Email whenever an event is added, changed or removed |
+| `private` | off | Private events appear as just "Busy" |
+| `calendar` | — | Which Google calendar receives the events |
+| `source` | `Calendar` | Which Outlook calendar is mirrored |
+| `email` | — | Where digests and warnings go |
+| `back` / `ahead` | 7 / 120 | How far back and forward to mirror |
+| `prefix` | `none` | Text in front of mirrored titles |
 
-> ### Why `CopyAttendeesAsGoogleAttendees` is off
-> If you turn it on, Google emails a calendar invitation **from your Google account to
-> every attendee of every mirrored meeting** — your colleagues get a duplicate invite
-> for each one. Instead, attendees and your RSVP status are written into the Google
-> event's description, so you can see exactly who is invited without anyone being
-> emailed.
+Everything else has a sensible default and is listed by `./scripts/configure.sh`.
 
-## Step 4 — Run setup once
+## Doing it by hand instead
 
-In the solution, open **O365GCal 0 Setup and Provision** and press **Run**.
+If you would rather not use the installer, or it fails partway:
 
-It creates three lists on your SharePoint site and emails you a summary that includes
-**the list of your Outlook and Google calendar IDs**. Check the IDs in that email
-against what you entered in step 3 and correct them if needed.
-
-## Step 5 — Dry run
-
-Turn on **O365GCal 3 Reconcile** and let it run once (or press **Run** yourself).
-
-With `DryRun` still on, nothing is written to Google. Open the `O365GCalLog` list on
-your SharePoint site and read the rows: each says what *would* have happened. If the
-event count looks about right, you are ready.
-
-## Step 6 — Go live
-
-1. Set `DryRun` to **off**.
-2. Turn on the remaining flows:
-   - **1 Sync Outlook Trigger** — picks up changes quickly
-   - **3 Reconcile** — the one that guarantees correctness (every 30 min)
-   - **4 Digest and Change Alerts** — daily email
-   - **5 Watchdog** — hourly health check
-
-Leave **2 Apply Event** on; the others call it.
-
-The first reconcile fills in your calendar. If you have a lot of meetings it spreads
-the work over several runs to stay inside Google's rate limit — the log tells you when
-that happens.
-
----
-
-## What you should see
-
-- Outlook meetings appear on Google within about 30 minutes.
-- Each mirrored event's description shows the organiser, the attendees, whether you
-  have replied, and a link back to the Outlook event.
-- A daily email listing what was added, changed and removed, plus **invitations you
-  still owe a reply to** — the thing Google genuinely cannot tell you.
-- An email if the automation breaks.
-
-## Known limits
-
-- **Recurring meetings become individual events on Google.** The Google Calendar
-  connector cannot create repeating events at all, so a weekly meeting appears as many
-  separate entries. They stay correct; they just do not group.
-- **One-way only.** Edits made on Google are overwritten.
-- **Up to 30 minutes behind** in the worst case.
-- **Meetings outside the window** (default 7 days back, 120 ahead) appear as they come
-  into range.
-- **Bodies are shortened.** The description shows Outlook's preview text plus a link;
-  attachments, embedded images and long bodies are not copied.
-- **Attachments, room resources and private notes are not mirrored.**
+1. `./scripts/build.sh` — produces `dist/O365GCal_managed.zip`
+2. Import that zip at [make.powerautomate.com](https://make.powerautomate.com) →
+   **Solutions** → **Import solution**
+3. Supply the three connections when asked. Pick **Office 365 Outlook**, not
+   **Outlook.com** — they look alike in the picker and are different services.
+4. Set at least `StateSiteUrl` and `AlertEmail`
+5. Turn the flows on: `./scripts/enable-flows.sh`
+6. Run Setup once: `./scripts/run-flow.sh 0`
 
 ## Living with it
 

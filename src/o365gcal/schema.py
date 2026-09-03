@@ -113,7 +113,7 @@ FLOWS = [
 #: missing a day is itself worth reporting, so it gets only enough grace for a late
 #: run - not enough to hide a skipped one.
 HEARTBEAT_EXPECTATIONS = {
-    "3 Reconcile": 90,        # every 30 minutes
+    "3 Reconcile": 45,        # every 15 minutes
     "5 Watchdog": 180,        # hourly
     "4 Digest": 1800,         # daily; 30 hours allows a late run without alarm
     "6 Backup State": 1800,   # daily

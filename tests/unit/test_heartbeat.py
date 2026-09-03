@@ -15,7 +15,7 @@ CADENCE = {
     "0 Setup and Provision": None,
     "1 Sync Outlook Trigger": None,
     "2 Apply Event": None,
-    "3 Reconcile": 30,
+    "3 Reconcile": 15,
     "4 Digest": 1440,
     "5 Watchdog": 60,
     "6 Backup State": 1440,

@@ -137,9 +137,12 @@ def effective_subject(event: OutlookEvent, config: Config) -> str:
 
 
 def _is_hidden(event: OutlookEvent, config: Config) -> bool:
-    """Under `busy-only`, private/confidential events are mirrored as opaque blocks:
-    the time is reserved on Google without leaking the subject, body or attendees."""
-    return config.privacy_mode == "busy-only" and event.sensitivity in (
+    """Whether this event mirrors as an opaque block.
+
+    The time is still reserved on Google, without leaking the subject, body or
+    attendees.
+    """
+    return config.hide_private_event_details and event.sensitivity in (
         Sensitivity.PRIVATE,
         Sensitivity.CONFIDENTIAL,
     )
@@ -161,7 +164,8 @@ def body_fingerprint(body_html: str) -> str:
 def fingerprint(event: OutlookEvent, config: Config) -> str:
     """The normative change-detection value, stored on the sync-map row.
 
-    Config fields that change rendered output (`title_prefix`, `privacy_mode`)
+    Config fields that change rendered output (`title_prefix`,
+    `hide_private_event_details`)
     participate on purpose: if an admin flips one, every event *should* be rewritten on
     the next reconcile. Deliberately absent: `lastModifiedDateTime`, the Graph event
     `id`, and anything else Exchange mutates on its own.
@@ -186,7 +190,7 @@ def fingerprint(event: OutlookEvent, config: Config) -> str:
         "" if hidden else normalize_attendees(event.required_attendees, event.optional_attendees),
         "" if hidden else (event.organizer or "").strip().lower(),
         event.my_response.value,
-        config.privacy_mode,
+        "1" if config.hide_private_event_details else "0",
     ]
     return "\x1f".join(fields)
 

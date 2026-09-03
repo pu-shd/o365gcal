@@ -88,17 +88,17 @@ def test_hash_changes_when_rsvp_changes(config, event):
     assert content_hash(event, config) != before
 
 
-def test_flipping_privacy_mode_rewrites_everything(config, event):
+def test_flipping_the_privacy_toggle_rewrites_everything(config, event):
     event.sensitivity = Sensitivity.PRIVATE
     before = content_hash(event, config)
-    config.privacy_mode = "busy-only"
+    config.hide_private_event_details = True
     assert content_hash(event, config) != before
 
 
 def test_busy_only_hides_details_from_hash(config):
     """Under busy-only, two private events differing only in subject/body must be
     indistinguishable -- otherwise the detail leaks via update churn."""
-    config.privacy_mode = "busy-only"
+    config.hide_private_event_details = True
     a = make_event("Secret One", body_html="confidential", location="Room A")
     b = make_event("Secret Two", body_html="also secret", location="Room B")
     b.ical_uid, b.start_utc, b.end_utc = a.ical_uid, a.start_utc, a.end_utc

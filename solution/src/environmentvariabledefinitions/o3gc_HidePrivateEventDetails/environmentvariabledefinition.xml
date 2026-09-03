@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{d1a4eba2-6aa5-59ee-9786-79ff2090769a}" schemaname="o3gc_HidePrivateEventDetails">
+  <displayname>HidePrivateEventDetails</displayname>
+  <description>When on, events marked Private or Confidential in Outlook appear on Google as an opaque 'Busy' block with no subject, location, body or attendees. Everything else is mirrored in full either way.</description>
+  <type>100000002</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>no</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

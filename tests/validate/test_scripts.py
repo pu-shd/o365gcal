@@ -265,3 +265,44 @@ def test_reconcile_drops_unknown_variables_and_reports_them():
     text = (ROOT / "scripts" / "common.sh").read_text()
     assert "dropped (no longer in the solution)" in text
     assert "taking the solution default for" in text
+
+
+def test_a_single_command_install_exists():
+    """The friction observed in practice was not any one step but their number:
+    finding a SharePoint site, deriving a OneDrive path, pasting a calendar
+    identifier out of a wall of JSON, running a flow by hand, switching flows on
+    through a portal that hides the control. install.sh does all of it."""
+    assert (ROOT / "scripts" / "install.sh").exists()
+    text = (ROOT / "scripts" / "install.sh").read_text()
+    for step in ("enable-flows.sh", "run-flow.sh", "configure.sh"):
+        assert step in text, f"install.sh should handle {step} for the user"
+    assert 'configure.sh" calendar' in text, (
+        "the installer should let the user pick a calendar from a list rather than "
+        "paste an identifier"
+    )
+
+
+def test_install_practises_before_writing_to_a_calendar():
+    """Nothing should reach a real calendar before the installer has seen the plan."""
+    text = (ROOT / "scripts" / "install.sh").read_text()
+    assert '"o3gc_DryRun": "yes"' in text
+    assert text.index('"o3gc_DryRun": "yes"') < text.index("dryrun off")
+    assert "Start mirroring for real?" in text
+
+
+def test_install_speaks_plainly():
+    """Written for someone who has never opened Power Automate. Jargon in the prompts
+    is what sends people back to asking a colleague."""
+    text = (ROOT / "scripts" / "install.sh").read_text()
+    for jargon in ("environment variable", "connection reference", "Dataverse",
+                   "solution zip", "OpenApiConnection"):
+        assert jargon not in text, f"install.sh says '{jargon}' to the user"
+
+
+def test_configure_offers_plain_language_toggles():
+    text = (ROOT / "scripts" / "configure.sh").read_text()
+    for short in ("dryrun", "notify", "private", "calendar", "window"):
+        assert short in text, f"configure.sh should expose '{short}'"
+    assert "NOT INSTALLED" in text, (
+        "a setting missing from the environment must not render as merely 'off'"
+    )

@@ -110,13 +110,6 @@
             "schemaName": "o3gc_TitlePrefix"
           }
         },
-        "PrivacyMode (o3gc_PrivacyMode)": {
-          "defaultValue": "full",
-          "type": "String",
-          "metadata": {
-            "schemaName": "o3gc_PrivacyMode"
-          }
-        },
         "AlertEmail (o3gc_AlertEmail)": {
           "defaultValue": "",
           "type": "String",
@@ -137,15 +130,22 @@
           "metadata": {
             "schemaName": "o3gc_NotifyOnChange"
           }
+        },
+        "HidePrivateEventDetails (o3gc_HidePrivateEventDetails)": {
+          "defaultValue": false,
+          "type": "Bool",
+          "metadata": {
+            "schemaName": "o3gc_HidePrivateEventDetails"
+          }
         }
       },
       "triggers": {
-        "Every_30_minutes": {
+        "Every_15_minutes": {
           "type": "Recurrence",
-          "description": "Worst-case sync latency. Lower it for faster convergence at the cost of more Outlook reads.",
+          "description": "Worst-case sync latency. Recurrence intervals cannot be driven by an environment variable, so changing this means editing the flow. Roughly five API calls per run plus one per change.",
           "recurrence": {
             "frequency": "Minute",
-            "interval": 30
+            "interval": 15
           },
           "metadata": {
             "operationMetadataId": "9c1f4a20-3b77-4e51-9a3d-000000000002"
@@ -509,7 +509,7 @@
                     ]
                   },
                   "type": "Compose",
-                  "inputs": "@and(equals(parameters('PrivacyMode (o3gc_PrivacyMode)'), 'busy-only'), contains(createArray('private','confidential'), coalesce(item()?['sensitivity'], 'normal')))"
+                  "inputs": "@and(equals(parameters('HidePrivateEventDetails (o3gc_HidePrivateEventDetails)'), true), contains(createArray('private','confidential'), coalesce(item()?['sensitivity'], 'normal')))"
                 },
                 "Compose_BodyFingerprint": {
                   "runAfter": {
@@ -538,7 +538,7 @@
                   },
                   "type": "Compose",
                   "description": "Fourteen normalised fields joined by US (0x1f), a character Outlook content cannot contain. Field order must match o365gcal.normalize.fingerprint; tests/validate/test_expression_parity.py enforces it. Deliberately excludes lastModifiedDateTime, which",
-                  "inputs": "@concat(if(outputs('Compose_Hidden'), 'Busy', trim(concat(if(equals(toLower(trim(coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), 'none'))), 'none'), '', coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), 'none')), coalesce(item()?['subject'], '')))), decodeUriComponent('%1F'), formatDateTime(item()?['startWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'), decodeUriComponent('%1F'), formatDateTime(item()?['endWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'), decodeUriComponent('%1F'), if(coalesce(item()?['isAllDay'], false), '1', '0'), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', trim(coalesce(item()?['location'], ''))), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', concat(string(length(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' ')))), ':', substring(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' ')), 0, min(256, length(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' '))))))), decodeUriComponent('%1F'), toLower(trim(coalesce(item()?['showAs'], 'busy'))), decodeUriComponent('%1F'), coalesce(item()?['sensitivity'], 'normal'), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', toLower(concat(trim(coalesce(item()?['requiredAttendees'], '')), ';', trim(coalesce(item()?['optionalAttendees'], ''))))), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', toLower(trim(coalesce(item()?['organizer'], '')))), decodeUriComponent('%1F'), coalesce(item()?['responseType'], 'none'), decodeUriComponent('%1F'), parameters('PrivacyMode (o3gc_PrivacyMode)'))"
+                  "inputs": "@concat(if(outputs('Compose_Hidden'), 'Busy', trim(concat(if(equals(toLower(trim(coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), 'none'))), 'none'), '', coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), 'none')), coalesce(item()?['subject'], '')))), decodeUriComponent('%1F'), formatDateTime(item()?['startWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'), decodeUriComponent('%1F'), formatDateTime(item()?['endWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'), decodeUriComponent('%1F'), if(coalesce(item()?['isAllDay'], false), '1', '0'), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', trim(coalesce(item()?['location'], ''))), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', concat(string(length(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' ')))), ':', substring(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' ')), 0, min(256, length(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' '))))))), decodeUriComponent('%1F'), toLower(trim(coalesce(item()?['showAs'], 'busy'))), decodeUriComponent('%1F'), coalesce(item()?['sensitivity'], 'normal'), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', toLower(concat(trim(coalesce(item()?['requiredAttendees'], '')), ';', trim(coalesce(item()?['optionalAttendees'], ''))))), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', toLower(trim(coalesce(item()?['organizer'], '')))), decodeUriComponent('%1F'), coalesce(item()?['responseType'], 'none'), decodeUriComponent('%1F'), if(parameters('HidePrivateEventDetails (o3gc_HidePrivateEventDetails)'), '1', '0'))"
                 },
                 "Compose_Description": {
                   "runAfter": {

@@ -64,7 +64,7 @@ subject │ startUtc │ endUtc │ isAllDay │ location │ bodyFingerprint �
 ```
 
 Stored on the map row as `ContentFingerprint`. Comparing it answers "did this change?"
-in one operation and costs zero API calls, which is what keeps a 30-minute reconcile
+in one operation and costs zero API calls, which is what keeps a 15-minute reconcile
 of a large calendar inside Google's rate limit.
 
 Deliberately **excluded**: `lastModifiedDateTime` and the Graph event `id`. Exchange
@@ -72,7 +72,7 @@ rewrites both without the user changing anything; including either would rewrite
 entire calendar on every run.
 
 Deliberately **included**: the config fields that alter rendered output. Flipping
-`PrivacyMode` *should* rewrite every event.
+`HidePrivateEventDetails` *should* rewrite every event.
 
 ## Correlation key
 

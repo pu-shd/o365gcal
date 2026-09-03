@@ -32,7 +32,7 @@ def envmap(**overrides):
     base = {
         "WindowPastDays": 7, "WindowFutureDays": 120, "MaxDeletePercent": 25,
         "MinDeletesBeforeBreaker": 5, "MaxMutationsPerRun": 60,
-        "HeartbeatStaleMinutes": 90, "PrivacyMode": "full",
+        "HeartbeatStaleMinutes": 90, "HidePrivateEventDetails": False,
     }
     base.update(overrides)
     return {f"{k} (o3gc_{k})": v for k, v in base.items()}
@@ -209,7 +209,7 @@ def _eval_flow_fingerprint(event, cfg):
         f"{k} (o3gc_{k})": v
         for k, v in {
             "TitlePrefix": cfg.title_prefix,
-            "PrivacyMode": cfg.privacy_mode,
+            "HidePrivateEventDetails": cfg.hide_private_event_details,
         }.items()
     }
     ev = Evaluator({
@@ -256,13 +256,13 @@ def test_full_fingerprint_matches_engine(mutate, label, config):
     assert _eval_flow_fingerprint(e, config) == fingerprint(e, config), label
 
 
-@pytest.mark.parametrize("mode", ["full", "busy-only"])
-def test_full_fingerprint_parity_under_privacy_mode(mode, config):
+@pytest.mark.parametrize("hide", [False, True])
+def test_full_fingerprint_parity_when_hiding_private_events(hide, config):
     from conftest import make_event
     from o365gcal.model import Sensitivity
     from o365gcal.normalize import fingerprint
 
-    config.privacy_mode = mode
+    config.hide_private_event_details = hide
     e = make_event(
         subject="Confidential review",
         location="Nassau Hall",

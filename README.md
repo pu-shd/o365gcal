@@ -11,15 +11,30 @@ by anyone who installs it.
 ## For someone who just wants to use it
 
 ```zsh
-./scripts/bootstrap.sh
+pac auth create        # sign in, opens a browser
+./scripts/install.sh
 ```
 
-A guided install that checks prerequisites, verifies your connections, asks three
-questions and installs. Safe to re-run. Full walkthrough in
-**[docs/INSTALL.md](docs/INSTALL.md)**.
+That is the whole installation. It works out where to keep its bookkeeping, checks
+your accounts are linked, installs, switches everything on, lets you pick the Google
+calendar **from a numbered list**, then does a practice run that writes nothing so you
+can see the plan before approving it. No need to open Power Automate or SharePoint, or
+to find a site address or paste a calendar identifier.
+
+Afterwards, settings are plain words rather than a portal:
+
+```zsh
+./scripts/configure.sh              # see everything and what it does
+./scripts/configure.sh notify on    # email me on every change
+./scripts/configure.sh dryrun on    # back to practice mode
+./scripts/configure.sh calendar     # pick a different Google calendar
+```
+
+Full walkthrough in **[docs/INSTALL.md](docs/INSTALL.md)**.
 
 | | |
 |---|---|
+| `./scripts/configure.sh` | See and change every setting, in plain language |
 | `./scripts/status.sh` | What is installed, is it healthy, is it running |
 | `./scripts/update.sh` | Graceful upgrade, preserving settings and bookkeeping |
 | `./scripts/teardown.sh` | Staged removal, each destructive step confirmed separately |
@@ -100,6 +115,6 @@ docs/             INSTALL, ADMIN, ARCHITECTURE, TROUBLESHOOTING
 ## Known limits
 
 Recurring meetings become individual Google events (the connector cannot create
-repeating events at all). One-way only. Up to 30 minutes behind. Event bodies are
-shortened to Outlook's preview text plus a link. Attachments, room resources and
-private notes are not mirrored.
+repeating events at all). One-way only. Changes appear within about 15 minutes, and
+usually sooner. Event bodies are shortened plus a link back to Outlook. Attachments,
+room resources and private notes are not mirrored.

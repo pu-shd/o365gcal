@@ -72,7 +72,7 @@ def test_description_carries_repair_marker(config):
 
 
 def test_busy_only_leaks_nothing(config):
-    config.privacy_mode = "busy-only"
+    config.hide_private_event_details = True
     e = _invited()
     e.sensitivity = Sensitivity.PRIVATE
     out = render_description(e, config)
@@ -84,7 +84,7 @@ def test_busy_only_leaks_nothing(config):
 
 
 def test_busy_only_sends_no_attendee_data_at_all(config):
-    config.privacy_mode = "busy-only"
+    config.hide_private_event_details = True
     e = _invited()
     e.sensitivity = Sensitivity.PRIVATE
     payload = render_google_event(e, config)

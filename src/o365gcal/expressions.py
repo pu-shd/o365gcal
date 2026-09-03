@@ -95,7 +95,7 @@ FINGERPRINT_FIELDS = [
     "attendees",
     "organizer",
     "myResponse",
-    "privacyMode",
+    "hidePrivate",
 ]
 
 
@@ -152,7 +152,7 @@ HEARTBEAT_STALE = (
 #: Private events under busy-only render as an opaque block.
 def is_hidden(sensitivity_expr: str) -> str:
     return (
-        f"and(equals({env('PrivacyMode')}, 'busy-only'), "
+        f"and(equals({env('HidePrivateEventDetails')}, true), "
         f"contains(createArray('private','confidential'), {sensitivity_expr}))"
     )
 
@@ -201,7 +201,7 @@ FLOW_FINGERPRINT_PARTS: dict[str, str] = {
     ),
     "organizer": _hide("toLower(trim(coalesce(item()?['organizer'], '')))"),
     "myResponse": "coalesce(item()?['responseType'], 'none')",
-    "privacyMode": env("PrivacyMode"),
+    "hidePrivate": f"if({env('HidePrivateEventDetails')}, '1', '0')",
 }
 
 
