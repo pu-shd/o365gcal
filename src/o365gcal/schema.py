@@ -99,6 +99,7 @@ FLOWS = [
     "5 Watchdog",
     "6 Backup State",
     "7 Dedup and Repair",
+    "8 Invitation Reminder",
 ]
 
 #: How long each flow may be silent before something is actually wrong, in minutes.
@@ -117,6 +118,9 @@ HEARTBEAT_EXPECTATIONS = {
     "5 Watchdog": 180,        # hourly
     "4 Digest": 1800,         # daily; 30 hours allows a late run without alarm
     "6 Backup State": 1800,   # daily
+    # Runs hourly but only sends on its own cadence; it stamps health on every
+    # evaluation, so an hourly threshold with headroom is right.
+    "8 Invitation Reminder": 180,
 }
 
 #: Flows deliberately without a heartbeat expectation, and why. Listed explicitly so

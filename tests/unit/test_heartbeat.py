@@ -20,6 +20,7 @@ CADENCE = {
     "5 Watchdog": 60,
     "6 Backup State": 1440,
     "7 Dedup and Repair": None,
+    "8 Invitation Reminder": 60,
 }
 
 

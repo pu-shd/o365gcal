@@ -18,6 +18,15 @@
         "api": {
           "name": "shared_sharepointonline"
         }
+      },
+      "shared_googlecalendar": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "o3gc_sharedgooglecalendar"
+        },
+        "api": {
+          "name": "shared_googlecalendar"
+        }
       }
     },
     "definition": {
@@ -136,6 +145,27 @@
           "type": "Bool",
           "metadata": {
             "schemaName": "o3gc_HidePrivateEventDetails"
+          }
+        },
+        "VerifySlices (o3gc_VerifySlices)": {
+          "defaultValue": 16,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_VerifySlices"
+          }
+        },
+        "MaxVerifyPerRun (o3gc_MaxVerifyPerRun)": {
+          "defaultValue": 10,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_MaxVerifyPerRun"
+          }
+        },
+        "GoogleCalendarId (o3gc_GoogleCalendarId)": {
+          "defaultValue": "primary",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_GoogleCalendarId"
           }
         }
       },
@@ -483,7 +513,7 @@
             },
             "For_Each_Outlook_Event": {
               "runAfter": {
-                "Check_Map_Read_Complete": [
+                "For_Each_Verify": [
                   "Succeeded"
                 ]
               },
@@ -1091,6 +1121,162 @@
               },
               "else": {
                 "actions": {}
+              }
+            },
+            "Compose_Verify_Slot": {
+              "runAfter": {
+                "Check_Map_Read_Complete": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "description": "Quarter-hour slot mod slice count. At a 15-minute cadence consecutive runs pick different slices, so a full sweep completes every four hours.",
+              "inputs": "@mod(add(mul(int(formatDateTime(utcNow(), 'HH')), 4), div(int(formatDateTime(utcNow(), 'mm')), 15)), int(parameters('VerifySlices (o3gc_VerifySlices)')))"
+            },
+            "Filter_Verify_Slice": {
+              "runAfter": {
+                "Compose_Verify_Slot": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Query",
+              "description": "This run's slice of the mirror. Checking every event every run would cost one Google call each, against a budget of 100 per 60 seconds - unaffordable for any real calendar.",
+              "inputs": {
+                "from": "@variables('ActiveRows')",
+                "where": "@equals(mod(int(item()?['Id']), int(parameters('VerifySlices (o3gc_VerifySlices)'))), outputs('Compose_Verify_Slot'))"
+              }
+            },
+            "Compose_Verify_Batch": {
+              "runAfter": {
+                "Filter_Verify_Slice": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "description": "Ceiling applied, so a large calendar cannot spend the whole per-minute budget on verification.",
+              "inputs": "@take(body('Filter_Verify_Slice'), int(parameters('MaxVerifyPerRun (o3gc_MaxVerifyPerRun)')))"
+            },
+            "For_Each_Verify": {
+              "runAfter": {
+                "Compose_Verify_Batch": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Foreach",
+              "description": "Confirms each mirrored event still exists on Google. Without this an event deleted directly in Google is never noticed: an unchanged Outlook meeting short-circuits to NoOp before anything looks.",
+              "foreach": "@outputs('Compose_Verify_Batch')",
+              "runtimeConfiguration": {
+                "concurrency": {
+                  "repetitions": 1
+                }
+              },
+              "actions": {
+                "Try_Get_Google_Event": {
+                  "runAfter": {},
+                  "type": "Scope",
+                  "description": "Scoped so result() can read the outcome; result() accepts only scope-type actions.",
+                  "actions": {
+                    "Google_Get_Event": {
+                      "runAfter": {},
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "connectionName": "shared_googlecalendar",
+                          "operationId": "GetEvent",
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_googlecalendar"
+                        },
+                        "parameters": {
+                          "calendarId": "@parameters('GoogleCalendarId (o3gc_GoogleCalendarId)')",
+                          "eventId": "@items('For_Each_Verify')?['GoogleEventId']"
+                        }
+                      },
+                      "operationOptions": "DisableAsyncPattern"
+                    }
+                  }
+                },
+                "Check_Missing": {
+                  "runAfter": {
+                    "Try_Get_Google_Event": [
+                      "Succeeded",
+                      "Failed",
+                      "TimedOut"
+                    ]
+                  },
+                  "type": "If",
+                  "description": "Only a definite 404 counts. A throttled or failed read is not evidence of deletion - acting on one would recreate events that are perfectly fine.",
+                  "expression": {
+                    "and": [
+                      {
+                        "not": {
+                          "equals": [
+                            "@result('Try_Get_Google_Event')[0]?['status']",
+                            "Succeeded"
+                          ]
+                        }
+                      },
+                      {
+                        "contains": [
+                          "@string(result('Try_Get_Google_Event')[0]?['error'])",
+                          "404"
+                        ]
+                      }
+                    ]
+                  },
+                  "actions": {
+                    "Clear_Map_Row": {
+                      "runAfter": {},
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "connectionName": "shared_sharepointonline",
+                          "operationId": "HttpRequest",
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                        },
+                        "parameters": {
+                          "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                          "parameters/method": "POST",
+                          "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('StateListName (o3gc_StateListName)'), ''')/items(', string(items('For_Each_Verify')?['Id']), ')')}",
+                          "parameters/headers": {
+                            "Accept": "application/json;odata=nometadata",
+                            "Content-Type": "application/json;odata=nometadata",
+                            "X-HTTP-Method": "MERGE",
+                            "IF-MATCH": "*"
+                          },
+                          "parameters/body": "@setProperty(setProperty(setProperty(json('{}'), 'GoogleEventId', ''), 'ContentFingerprint', ''), 'LastError', 'Google copy was missing; queued for recreation')"
+                        }
+                      },
+                      "description": "Clears the id and fingerprint so the next reconcile recreates it through the ordinary create path. The fingerprint must go too, or the diff sees no change and skips the create."
+                    },
+                    "Log_Missing": {
+                      "runAfter": {
+                        "Clear_Map_Row": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "connectionName": "shared_sharepointonline",
+                          "operationId": "HttpRequest",
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                        },
+                        "parameters": {
+                          "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                          "parameters/method": "POST",
+                          "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('LogListName (o3gc_LogListName)'), ''')/items')}",
+                          "parameters/headers": {
+                            "Accept": "application/json;odata=nometadata",
+                            "Content-Type": "application/json;odata=nometadata"
+                          },
+                          "parameters/body": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'Title', variables('RunId')), 'Timestamp', utcNow()), 'FlowName', '3 Reconcile'), 'Level', 'Warn'), 'Operation', 'Skip'), 'Message', concat('Mirrored event ', items('For_Each_Verify')?['GoogleEventId'], ' is gone from Google; it will be recreated on the next run.'))"
+                        }
+                      }
+                    }
+                  },
+                  "else": {
+                    "actions": {}
+                  }
+                }
               }
             }
           }

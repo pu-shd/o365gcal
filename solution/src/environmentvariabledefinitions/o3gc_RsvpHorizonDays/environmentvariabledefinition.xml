@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{3727e529-813a-5508-a88d-42b9658777c8}" schemaname="o3gc_RsvpHorizonDays">
+  <displayname>RsvpHorizonDays</displayname>
+  <description>Only mention unanswered invitations starting within this many days. A meeting eight months out is not urgent and crowds out ones that are.</description>
+  <type>100000001</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>60</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

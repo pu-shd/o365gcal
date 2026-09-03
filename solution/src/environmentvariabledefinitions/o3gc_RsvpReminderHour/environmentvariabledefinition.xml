@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{a6acb706-e039-5c0e-aa55-0950f5a90c5e}" schemaname="o3gc_RsvpReminderHour">
+  <displayname>RsvpReminderHour</displayname>
+  <description>Hour of day (0-23, UTC) to send the invitations reminder. The default 8 avoids the small hours.</description>
+  <type>100000001</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>8</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

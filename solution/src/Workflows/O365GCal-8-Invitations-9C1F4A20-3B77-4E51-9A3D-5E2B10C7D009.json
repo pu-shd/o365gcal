@@ -1,0 +1,372 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_office365": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "o3gc_sharedoffice365"
+        },
+        "api": {
+          "name": "shared_office365"
+        }
+      },
+      "shared_sharepointonline": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "o3gc_sharedsharepointonline"
+        },
+        "api": {
+          "name": "shared_sharepointonline"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "description": "Reminds you which meeting invitations still need a reply, on its own schedule and grouped by meeting rather than by occurrence. This is the one thing a Google-only user cannot discover for themselves: Google shows the meeting but never that the organiser is still waiting. Triggered hourly and decides internally whether to send, because a Recurrence interval cannot be driven by a setting.",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "OutlookCalendarId (o3gc_OutlookCalendarId)": {
+          "defaultValue": "Calendar",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_OutlookCalendarId"
+          }
+        },
+        "AlertEmail (o3gc_AlertEmail)": {
+          "defaultValue": "",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_AlertEmail"
+          }
+        },
+        "StateSiteUrl (o3gc_StateSiteUrl)": {
+          "defaultValue": "",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_StateSiteUrl"
+          }
+        },
+        "HealthListName (o3gc_HealthListName)": {
+          "defaultValue": "O365GCalHealth",
+          "type": "String",
+          "metadata": {
+            "schemaName": "o3gc_HealthListName"
+          }
+        },
+        "RsvpReminderDays (o3gc_RsvpReminderDays)": {
+          "defaultValue": 3,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_RsvpReminderDays"
+          }
+        },
+        "RsvpReminderHour (o3gc_RsvpReminderHour)": {
+          "defaultValue": 8,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_RsvpReminderHour"
+          }
+        },
+        "RsvpHorizonDays (o3gc_RsvpHorizonDays)": {
+          "defaultValue": 60,
+          "type": "Int",
+          "metadata": {
+            "schemaName": "o3gc_RsvpHorizonDays"
+          }
+        }
+      },
+      "triggers": {
+        "Every_hour": {
+          "type": "Recurrence",
+          "recurrence": {
+            "frequency": "Hour",
+            "interval": 1
+          },
+          "metadata": {
+            "operationMetadataId": "9c1f4a20-3b77-4e51-9a3d-000000000009"
+          }
+        }
+      },
+      "actions": {
+        "Init_Groups": {
+          "type": "InitializeVariable",
+          "description": "Declared at the top level because InitializeVariable cannot be nested inside a condition.",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Groups",
+                "type": "array",
+                "value": []
+              }
+            ]
+          },
+          "runAfter": {}
+        },
+        "Check_Send_Window": {
+          "type": "If",
+          "description": "Hourly trigger, but sends only at the configured hour and only every RsvpReminderDays. Recurrence intervals cannot be driven by a setting, so the cadence is decided here instead.",
+          "expression": {
+            "and": [
+              {
+                "greater": [
+                  "@int(parameters('RsvpReminderDays (o3gc_RsvpReminderDays)'))",
+                  0
+                ]
+              },
+              {
+                "equals": [
+                  "@int(formatDateTime(utcNow(), 'HH'))",
+                  "@int(parameters('RsvpReminderHour (o3gc_RsvpReminderHour)'))"
+                ]
+              },
+              {
+                "equals": [
+                  "@mod(int(formatDateTime(utcNow(), 'dd')), int(parameters('RsvpReminderDays (o3gc_RsvpReminderDays)')))",
+                  0
+                ]
+              }
+            ]
+          },
+          "actions": {
+            "Get_Upcoming": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "description": "Read live from Outlook. An RSVP still owed is a current fact about the calendar, not something to infer from the log.",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_office365",
+                  "operationId": "GetEventsCalendarViewV3",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+                },
+                "parameters": {
+                  "calendarId": "@parameters('OutlookCalendarId (o3gc_OutlookCalendarId)')",
+                  "startDateTimeUtc": "@{formatDateTime(utcNow(), 'yyyy-MM-ddTHH:mm:ss')}",
+                  "endDateTimeUtc": "@{formatDateTime(addDays(utcNow(), int(parameters('RsvpHorizonDays (o3gc_RsvpHorizonDays)'))), 'yyyy-MM-ddTHH:mm:ss')}",
+                  "$orderby": "start/dateTime",
+                  "$top": 250
+                }
+              },
+              "operationOptions": "DisableAsyncPattern"
+            },
+            "Filter_Outstanding": {
+              "runAfter": {
+                "Get_Upcoming": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Query",
+              "description": "Tentative counts as outstanding: it is not an answer the organiser can plan around.",
+              "inputs": {
+                "from": "@coalesce(body('Get_Upcoming')?['value'], json('[]'))",
+                "where": "@contains(createArray('notResponded','tentativelyAccepted'), coalesce(item()?['responseType'], 'none'))"
+              }
+            },
+            "Select_Keys": {
+              "runAfter": {
+                "Filter_Outstanding": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Select",
+              "inputs": {
+                "from": "@body('Filter_Outstanding')",
+                "select": "@coalesce(item()?['seriesMasterId'], item()?['iCalUId'])"
+              }
+            },
+            "Compose_Unique": {
+              "runAfter": {
+                "Select_Keys": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "description": "union with itself is the only way to get distinct values in this expression language.",
+              "inputs": "@union(body('Select_Keys'), body('Select_Keys'))"
+            },
+            "For_Each_Group": {
+              "runAfter": {
+                "Compose_Unique": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Foreach",
+              "description": "One entry per meeting or series, reporting the soonest occurrence and how many are outstanding. Replying in Outlook answers the whole series at once.",
+              "foreach": "@outputs('Compose_Unique')",
+              "runtimeConfiguration": {
+                "concurrency": {
+                  "repetitions": 1
+                }
+              },
+              "actions": {
+                "Filter_Members": {
+                  "runAfter": {},
+                  "type": "Query",
+                  "inputs": {
+                    "from": "@body('Filter_Outstanding')",
+                    "where": "@equals(coalesce(item()?['seriesMasterId'], item()?['iCalUId']), items('For_Each_Group'))"
+                  }
+                },
+                "Compose_Soonest": {
+                  "runAfter": {
+                    "Filter_Members": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "description": "Graph does not guarantee ordering, so the soonest is chosen explicitly rather than taken as first.",
+                  "inputs": "@first(sort(body('Filter_Members'), 'startWithTimeZone'))"
+                },
+                "Append_Group": {
+                  "runAfter": {
+                    "Compose_Soonest": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "AppendToArrayVariable",
+                  "inputs": {
+                    "name": "Groups",
+                    "value": {
+                      "subject": "@coalesce(outputs('Compose_Soonest')?['subject'], '(no subject)')",
+                      "nextStart": "@outputs('Compose_Soonest')?['startWithTimeZone']",
+                      "count": "@length(body('Filter_Members'))",
+                      "response": "@coalesce(outputs('Compose_Soonest')?['responseType'], '')",
+                      "organizer": "@coalesce(outputs('Compose_Soonest')?['organizer'], '')",
+                      "webLink": "@coalesce(outputs('Compose_Soonest')?['webLink'], '')"
+                    }
+                  }
+                }
+              }
+            },
+            "Sort_Groups": {
+              "runAfter": {
+                "For_Each_Group": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "description": "Soonest first: attention should land on what is most imminent.",
+              "inputs": "@sort(variables('Groups'), 'nextStart')"
+            },
+            "Select_Cards": {
+              "runAfter": {
+                "Sort_Groups": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Select",
+              "inputs": {
+                "from": "@outputs('Sort_Groups')",
+                "select": "@concat('<tr><td style=\"padding:14px 16px;border-bottom:1px solid #e8e8e8\">','<div style=\"font:600 15px/1.4 -apple-system,Segoe UI,Roboto,sans-serif;color:#1a1a1a\">',coalesce(item()?['subject'], '(no subject)'),'</div>','<div style=\"font:13px/1.6 -apple-system,Segoe UI,Roboto,sans-serif;color:#666;margin-top:3px\">','Next: ', formatDateTime(item()?['nextStart'], 'ddd d MMM, HH:mm'), ' UTC',if(greater(item()?['count'], 1), concat(' &middot; ', string(item()?['count']), ' occurrences awaiting reply'), ''),if(equals(item()?['response'], 'tentativelyAccepted'), ' &middot; currently tentative', ''),'</div>',if(empty(coalesce(item()?['organizer'], '')), '',  concat('<div style=\"font:13px/1.6 -apple-system,Segoe UI,Roboto,sans-serif;color:#888\">from ', item()?['organizer'], '</div>')),'<div style=\"margin-top:8px\"><a href=\"', coalesce(item()?['webLink'], ''), '\" style=\"display:inline-block;padding:7px 14px;background:#0b5cab;color:#fff;text-decoration:none;border-radius:4px;font:600 13px -apple-system,Segoe UI,Roboto,sans-serif\">Reply in Outlook</a></div>','</td></tr>')"
+              }
+            },
+            "Check_Any_Outstanding": {
+              "runAfter": {
+                "Select_Cards": [
+                  "Succeeded"
+                ]
+              },
+              "type": "If",
+              "description": "Nothing outstanding means no email. A reminder that arrives to say there is nothing to do trains people to ignore it.",
+              "expression": {
+                "greater": [
+                  "@length(outputs('Sort_Groups'))",
+                  0
+                ]
+              },
+              "actions": {
+                "Send_Reminder": {
+                  "runAfter": {},
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_office365",
+                      "operationId": "SendEmailV2",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+                    },
+                    "parameters": {
+                      "emailMessage/To": "@parameters('AlertEmail (o3gc_AlertEmail)')",
+                      "emailMessage/Subject": "@{concat(string(length(outputs('Sort_Groups'))), if(equals(length(outputs('Sort_Groups')), 1), ' invitation needs your reply', ' invitations need your reply'), ' - soonest ', first(outputs('Sort_Groups'))?['subject'])}",
+                      "emailMessage/Body": "<div style=\"background:#f4f5f7;padding:24px 12px;font-family:-apple-system,Segoe UI,Roboto,sans-serif\"><table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:560px;margin:0 auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)\"><tr><td style=\"padding:20px 16px 14px\"><div style=\"font:600 17px/1.3 -apple-system,Segoe UI,Roboto,sans-serif;color:#1a1a1a\">@{length(outputs('Sort_Groups'))} @{if(equals(length(outputs('Sort_Groups')), 1), 'invitation', 'invitations')} awaiting your reply</div><div style=\"font:13px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#666;margin-top:5px\">These are on your Google calendar, but the organiser has not had an answer. Google cannot show this &mdash; only Outlook knows.</div></td></tr>@{join(body('Select_Cards'), '')}<tr><td style=\"padding:12px 16px;background:#fafafa\"><div style=\"font:11px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#999\">Recurring meetings are shown once; replying answers the whole series. Only invitations in the next @{parameters('RsvpHorizonDays (o3gc_RsvpHorizonDays)')} days are listed. Change the frequency with: configure.sh rsvpdays &lt;n&gt;, or 0 to stop these.</div></td></tr></table></div>",
+                      "emailMessage/Importance": "Normal"
+                    }
+                  }
+                }
+              },
+              "else": {
+                "actions": {}
+              }
+            },
+            "Get_Health_Row": {
+              "runAfter": {
+                "Check_Any_Outstanding": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "HttpRequest",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                  "parameters/method": "GET",
+                  "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items?$select=Id&$filter=Title eq ''8 Invitation Reminder''&$top=1')}",
+                  "parameters/headers": {
+                    "Accept": "application/json;odata=nometadata"
+                  }
+                }
+              }
+            },
+            "Stamp_Health": {
+              "runAfter": {
+                "Get_Health_Row": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "HttpRequest",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+                  "parameters/method": "POST",
+                  "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items(', string(first(body('Get_Health_Row')?['value'])?['Id']), ')')}",
+                  "parameters/headers": {
+                    "Accept": "application/json;odata=nometadata",
+                    "Content-Type": "application/json;odata=nometadata",
+                    "X-HTTP-Method": "MERGE",
+                    "IF-MATCH": "*"
+                  },
+                  "parameters/body": "@setProperty(setProperty(setProperty(json('{}'), 'LastSuccessUtc', utcNow()), 'LastRunUtc', utcNow()), 'LastRunStatus', 'Succeeded')"
+                }
+              }
+            }
+          },
+          "else": {
+            "actions": {}
+          },
+          "runAfter": {
+            "Init_Groups": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "outputs": {}
+    }
+  },
+  "schemaVersion": "1.0.0.0"
+}

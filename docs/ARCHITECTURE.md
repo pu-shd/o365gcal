@@ -176,6 +176,50 @@ That last one exists because `ListEvents` has no paging and returns events in
 arbitrary order, so the window is walked in small slices and a suspiciously full
 response is treated as unreadable rather than complete.
 
+## How deletions and cancellations reach Google
+
+Deletion is inferred from **absence**, not from a notification. Each reconcile reads
+the whole calendar for the window, records every occurrence it saw, then finds
+sync-map rows it created that Outlook no longer reports. Those are removed from Google
+and the row is marked `Deleted`.
+
+| In Outlook | On Google |
+|---|---|
+| Meeting deleted | Removed within ~15 minutes |
+| One occurrence of a series deleted | Only that occurrence removed |
+| Cancellation that removes the item | Removed, same as a deletion |
+| Cancellation that leaves a `Canceled:` item | Kept, title updated to match |
+| Event ages out of the sync window | **Kept** - leaving the window is not a cancellation |
+| Event you created directly in Google | **Never touched** - no recorded id |
+
+The trigger flow never deletes anything: it makes no Google calls at all. That trigger
+reports `Deleted` both for genuine cancellations *and* for events merely leaving its
+watch window, with no way to distinguish them, so acting on it would remove live
+meetings. Every deletion therefore waits for a reconcile.
+
+There is no cancellation *flag* to read - `isCancelled` is not on the connector's
+calendar-view response - which is why the behaviour depends on what Outlook does to
+the item rather than on a property.
+
+Deletes are applied last, after creates and updates, so a run truncated by the
+throttle cap has done its reversible work first. A 404 from Google counts as success:
+the event being already gone is the desired end state.
+
+### Events deleted directly in Google
+
+An unchanged Outlook meeting decides `NoOp` before anything checks whether its Google
+copy still exists, so a manual deletion on the Google side would otherwise go
+unnoticed until that meeting happened to change. Verifying every event every run would
+cost one Google call each against a budget of 100 per 60 seconds, so each reconcile
+verifies **one rotating slice**: with `VerifySlices` at 16 and a 15-minute cadence,
+every mirrored event is checked about every four hours for roughly one extra call per
+run, capped by `MaxVerifyPerRun`.
+
+A definite 404 clears the row's Google id *and its fingerprint*, which queues the
+ordinary create path for the next run. Clearing only the id would leave the
+fingerprint matching, so the diff would see no change and skip the recreation it just
+queued. A throttled or failed read is not treated as a deletion.
+
 ## Testing
 
 Flows cannot execute outside Power Automate, so the suite verifies the two things that

@@ -77,8 +77,8 @@ def walk_actions(actions):
 
 
 #: 0 Setup, 1 Sync trigger, 2 Apply Event (child), 3 Reconcile, 4 Digest,
-#: 5 Watchdog, 6 Backup State, 7 Dedup and Repair.
-EXPECTED_FLOWS = 8
+#: 5 Watchdog, 6 Backup State, 7 Dedup and Repair, 8 Invitation Reminder.
+EXPECTED_FLOWS = 9
 
 
 def test_all_flows_present():
@@ -173,14 +173,16 @@ def test_child_flow_is_a_subprocess_and_activated():
 @pytest.mark.parametrize(
     "stem,subprocess",
     [("0-Setup", "0"), ("1-SyncTrigger", "0"), ("3-Reconcile", "0"),
-     ("4-Digest", "0"), ("5-Watchdog", "0"), ("6-Backup", "0"), ("7-Dedup", "0")],
+     ("4-Digest", "0"), ("5-Watchdog", "0"), ("6-Backup", "0"), ("7-Dedup", "0"),
+     ("8-Invitations", "0")],
 )
 def test_parent_flows_are_not_subprocesses(stem, subprocess):
     assert workflow_meta(stem).findtext("Subprocess") == subprocess
 
 
 @pytest.mark.parametrize("stem", ["1-SyncTrigger", "3-Reconcile", "4-Digest",
-                                  "5-Watchdog", "6-Backup", "7-Dedup"])
+                                  "5-Watchdog", "6-Backup", "7-Dedup",
+                                  "8-Invitations"])
 def test_scheduled_flows_ship_switched_off(stem):
     """Nothing may write to a real calendar before the installer has set the
     environment variables and run Setup."""
@@ -333,6 +335,8 @@ NON_CALENDAR_FIELDS = {
     "StaleAfterMinutes", "AffectsSync", "name", "stale", "affects",
     # Fields of the Changes array the reconciler builds for its notification.
     "operation", "startsAt",
+    # Fields of the Groups array the invitation reminder builds.
+    "subject", "nextStart", "count", "response", "organizer", "webLink",
 }
 
 #: Banned outright, with the reason, so the failure explains itself.
@@ -723,9 +727,59 @@ def test_reconcile_aborts_on_a_truncated_map_read():
         "must fail the run, not succeed having done nothing - a green run that skipped "
         "the work is indistinguishable from a healthy one"
     )
-    assert "Check_Map_Read_Complete" in acts["For_Each_Outlook_Event"]["runAfter"], (
-        "the guard must gate the loop, not run beside it"
+    # The guard must gate the work, but it need not be the loop's immediate
+    # predecessor - the verification sweep now sits between them. What matters is that
+    # nothing which reads the map runs before the guard has passed, so the check
+    # follows the runAfter chain rather than asserting one edge.
+    def reaches(start, target, seen=None):
+        seen = seen or set()
+        if start in seen:
+            return False
+        seen.add(start)
+        after = acts.get(start, {}).get("runAfter") or {}
+        return target in after or any(reaches(p, target, seen) for p in after)
+
+    assert reaches("For_Each_Outlook_Event", "Check_Map_Read_Complete"), (
+        "the diff loop must not run before the truncated-read guard has passed"
     )
+
+
+def test_verification_sweep_is_also_gated_by_the_guard():
+    """A short map read makes the verification slice unsound too: rows the read missed
+    would never be checked, and the slice arithmetic would silently shift."""
+    path = next(p for p in WORKFLOWS if "3-Reconcile" in p.name)
+    acts = definition(path)["actions"]["Try_Reconcile"]["actions"]
+    assert "Check_Map_Read_Complete" in acts["Compose_Verify_Slot"]["runAfter"]
+
+
+def test_verification_only_acts_on_a_definite_404():
+    """A throttled or failed read is not evidence of deletion. Recreating on one would
+    duplicate events whenever the connector is merely busy."""
+    path = next(p for p in WORKFLOWS if "3-Reconcile" in p.name)
+    loop = (definition(path)["actions"]["Try_Reconcile"]["actions"]
+            ["For_Each_Verify"]["actions"])
+    expr = json.dumps(loop["Check_Missing"]["expression"])
+    assert "404" in expr, "must require a definite not-found, not any failure"
+
+
+def test_verification_clears_the_fingerprint_too():
+    """Clearing only the id would leave the fingerprint matching, so the diff would see
+    no change and skip the recreation it just queued."""
+    path = next(p for p in WORKFLOWS if "3-Reconcile" in p.name)
+    body = (definition(path)["actions"]["Try_Reconcile"]["actions"]["For_Each_Verify"]
+            ["actions"]["Check_Missing"]["actions"]["Clear_Map_Row"]
+            ["inputs"]["parameters"]["parameters/body"])
+    assert "'GoogleEventId', ''" in body
+    assert "'ContentFingerprint', ''" in body
+
+
+def test_verification_is_capped(config=None):
+    """A large calendar must not spend the Google connector's whole per-minute budget
+    on checking."""
+    path = next(p for p in WORKFLOWS if "3-Reconcile" in p.name)
+    batch = (definition(path)["actions"]["Try_Reconcile"]["actions"]
+             ["Compose_Verify_Batch"]["inputs"])
+    assert "take(" in batch and "MaxVerifyPerRun" in batch
 
 
 def test_watchdog_prunes_the_sync_map():
@@ -984,3 +1038,75 @@ def test_health_stamp_still_runs_after_notification():
     path = next(p for p in WORKFLOWS if "3-Reconcile" in p.name)
     T = definition(path)["actions"]["Try_Reconcile"]["actions"]
     assert "Notify_Changes" in T["Stamp_Health"]["runAfter"]
+
+
+@pytest.mark.parametrize("path", WORKFLOWS, ids=lambda p: p.name.split("-")[1])
+def test_variables_are_initialised_at_the_top_level(path):
+    """`InitializeVariable` may only appear at a flow's top level. Nesting one inside a
+    condition or scope is accepted at import and rejected at activation with
+    InvalidVariableInitialization - so the solution installs and the flow will not
+    start, which reads as a permissions problem rather than a malformed definition."""
+    d = definition(path)
+    top = set(d["actions"])
+    for name, action in walk_actions(d["actions"]):
+        if action.get("type") != "InitializeVariable":
+            continue
+        assert name in top, (
+            f"{path.name}:{name} initialises a variable inside another action; "
+            f"declare it at the top level and assign it where needed"
+        )
+
+
+@pytest.mark.parametrize("path", WORKFLOWS, ids=lambda p: p.name.split("-")[1])
+def test_no_stray_quote_before_an_html_attribute(path):
+    """Catches a malformed HTML attribute built by string concatenation.
+
+    Splitting a WDL literal across adjacent Python strings puts '' at the join, which
+    WDL reads as an escaped single quote. The result was `<a href="..." 'style="...">`
+    - and the mail client's sanitiser responded by discarding the rest of the table,
+    so a two-card email arrived showing one card while the header still said two."""
+    raw = path.read_text()
+    offenders = [
+        raw[max(0, m.start() - 50):m.start() + 30]
+        for m in re.finditer(r"''(?=[a-zA-Z-]+=\\\")", raw)
+    ]
+    assert not offenders, (
+        f"{path.name} has an escaped quote before an HTML attribute:\n  "
+        + "\n  ".join(offenders)
+    )
+
+
+def test_invitation_reminder_groups_by_series():
+    """The digest that prompted this listed seventeen lines for two recurring
+    meetings - complete, and unreadable."""
+    path = next(p for p in WORKFLOWS if "8-Invitations" in p.name)
+    inner = definition(path)["actions"]["Check_Send_Window"]["actions"]
+    key = inner["Select_Keys"]["inputs"]["select"]
+    assert "seriesMasterId" in key and "iCalUId" in key, (
+        "group by series, falling back to iCalUId for a one-off"
+    )
+    group = inner["For_Each_Group"]["actions"]
+    assert "count" in json.dumps(group["Append_Group"]["inputs"]["value"])
+
+
+def test_invitation_reminder_reports_the_soonest_occurrence():
+    """Graph does not guarantee ordering, so the soonest must be chosen explicitly."""
+    path = next(p for p in WORKFLOWS if "8-Invitations" in p.name)
+    inner = definition(path)["actions"]["Check_Send_Window"]["actions"]
+    soonest = inner["For_Each_Group"]["actions"]["Compose_Soonest"]["inputs"]
+    assert "sort(" in soonest and "startWithTimeZone" in soonest
+
+
+def test_invitation_reminder_is_silent_when_nothing_is_outstanding():
+    path = next(p for p in WORKFLOWS if "8-Invitations" in p.name)
+    inner = definition(path)["actions"]["Check_Send_Window"]["actions"]
+    check = inner["Check_Any_Outstanding"]["expression"]
+    assert check == {"greater": ["@length(outputs('Sort_Groups'))", 0]}
+
+
+def test_invitation_reminder_can_be_switched_off():
+    path = next(p for p in WORKFLOWS if "8-Invitations" in p.name)
+    window = definition(path)["actions"]["Check_Send_Window"]["expression"]["and"]
+    assert {"greater": ["@int(parameters('RsvpReminderDays (o3gc_RsvpReminderDays)'))", 0]} in window, (
+        "RsvpReminderDays of 0 must stop the reminders entirely"
+    )

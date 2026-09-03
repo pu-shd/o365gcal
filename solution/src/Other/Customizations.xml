@@ -201,6 +201,30 @@
         <LocalizedName description="O365GCal 7 Dedup and Repair" languagecode="1033" />
       </LocalizedNames>
     </Workflow>
+    <Workflow WorkflowId="{9C1F4A20-3B77-4E51-9A3D-5E2B10C7D009}" Name="O365GCal 8 Invitation Reminder">
+      <JsonFileName>/Workflows/O365GCal-8-Invitations-9C1F4A20-3B77-4E51-9A3D-5E2B10C7D009.json</JsonFileName>
+      <Type>1</Type>
+      <Subprocess>0</Subprocess>
+      <Category>5</Category>
+      <Mode>0</Mode>
+      <Scope>4</Scope>
+      <OnDemand>0</OnDemand>
+      <TriggerOnCreate>0</TriggerOnCreate>
+      <TriggerOnDelete>0</TriggerOnDelete>
+      <AsyncAutodelete>0</AsyncAutodelete>
+      <SyncWorkflowLogOnFailure>0</SyncWorkflowLogOnFailure>
+      <StateCode>0</StateCode>
+      <StatusCode>1</StatusCode>
+      <RunAs>1</RunAs>
+      <IsTransacted>1</IsTransacted>
+      <IntroducedVersion>1.0</IntroducedVersion>
+      <IsCustomizable>1</IsCustomizable>
+      <IsCustomProcessingStepAllowedForOtherPublishers>1</IsCustomProcessingStepAllowedForOtherPublishers>
+      <PrimaryEntity>none</PrimaryEntity>
+      <LocalizedNames>
+        <LocalizedName description="O365GCal 8 Invitation Reminder" languagecode="1033" />
+      </LocalizedNames>
+    </Workflow>
   </Workflows>
   <FieldSecurityProfiles />
   <Templates />

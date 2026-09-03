@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{e7cfcc49-e3a2-5721-bb09-cc0901e98ac1}" schemaname="o3gc_MaxVerifyPerRun">
+  <displayname>MaxVerifyPerRun</displayname>
+  <description>Ceiling on existence checks per run, so a large calendar cannot spend the Google connector's whole per-minute budget on verification.</description>
+  <type>100000001</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>10</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

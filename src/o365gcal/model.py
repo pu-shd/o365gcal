@@ -124,6 +124,8 @@ class MapRow:
     error_count: int = 0
     last_error: str = ""
     owner_upn: str = ""
+    #: SharePoint's list item id, used to spread verification evenly across runs.
+    list_item_id: int | None = None
 
 
 @dataclass
@@ -200,6 +202,19 @@ class Config:
     #: have a perfectly legitimate deletion refused on every run.
     min_deletes_before_breaker: int = 5
     heartbeat_stale_minutes: int = 90
+    #: How many runs a full existence sweep is spread over. At a 15-minute cadence,
+    #: 16 slices checks every mirrored event every four hours for about one Google
+    #: call per run.
+    #: Reminder cadence in days; 0 disables it.
+    rsvp_reminder_days: int = 3
+    rsvp_reminder_hour: int = 8
+    #: Invitations further out than this are not mentioned: a meeting months away is
+    #: not urgent and crowds out the ones that are.
+    rsvp_horizon_days: int = 60
+    verify_slices: int = 16
+    #: Hard ceiling on existence checks per run, so a large calendar cannot spend the
+    #: connector's whole per-minute budget on verification.
+    max_verify_per_run: int = 10
     log_retention_days: int = 90
     #: How long a sync-map row outlives the sync window before being pruned. Wide on
     #: purpose: pruning a row orphans its Google event, and a generous margin keeps

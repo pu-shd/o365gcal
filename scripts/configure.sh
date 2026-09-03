@@ -32,8 +32,11 @@ set_meta site     o3gc_StateSiteUrl             text "Where the automation keeps
 set_meta prefix   o3gc_TitlePrefix              text "Text put in front of mirrored titles ('none' for nothing)"
 set_meta back     o3gc_WindowPastDays           num  "How many days of past meetings to mirror"
 set_meta ahead    o3gc_WindowFutureDays         num  "How many days ahead to mirror"
+set_meta rsvpdays o3gc_RsvpReminderDays         num  "Days between 'you owe a reply' reminders (0 = never)"
+set_meta rsvphour o3gc_RsvpReminderHour         num  "Hour of day (UTC) those reminders are sent"
+set_meta rsvpdays_horizon o3gc_RsvpHorizonDays  num  "Only remind about invitations within this many days"
 
-ORDER=(dryrun notify private calendar source email back ahead prefix site)
+ORDER=(dryrun notify private rsvpdays rsvphour calendar source email back ahead prefix site)
 
 ORG="$(org_url)"
 [[ -n "$ORG" ]] || die "not connected to an environment"
@@ -202,6 +205,8 @@ if (( $# == 0 )); then
     ./scripts/configure.sh notify on         email me on every change
     ./scripts/configure.sh calendar          pick a Google calendar from a list
     ./scripts/configure.sh window 7 120      days back, days ahead
+    ./scripts/configure.sh rsvpdays 1        remind me daily about unanswered invites
+    ./scripts/configure.sh rsvpdays 0        stop those reminders
 
   Changes take effect on the next run; no reinstall needed.
 HELP

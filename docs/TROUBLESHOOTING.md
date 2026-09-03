@@ -66,6 +66,38 @@ per run to stay inside Google's limit of 100 calls per 60 seconds. A large first
 drains over several runs; it is not stuck. Raise `MaxMutationsPerRun` cautiously if you
 want it faster — going over the limit fails the run mid-batch.
 
+## I deleted an event in Google and it did not come back
+
+It will, but not immediately. Each reconcile verifies a rotating slice of the mirror
+rather than every event, so a manual deletion on the Google side is noticed within
+about four hours by default and recreated on the run after that. Lower `VerifySlices`
+to check more often at the cost of more API calls.
+
+## An event I deleted in Outlook is still on Google
+
+Give it one reconcile cycle (15 minutes). If it persists, check whether its start date
+is outside the sync window - `back`/`ahead` in `configure.sh`. Events that have aged
+out of the window are deliberately left alone, because leaving the window is not a
+cancellation.
+
+If a whole batch failed to disappear, look in the log list for a circuit-breaker
+entry: a deletion batch that is both a large share of the mirror and more than five
+events is refused outright, because a partial Outlook read looks identical to a mass
+cancellation.
+
+## Too many, too few, or badly formatted reminder emails
+
+```zsh
+./scripts/configure.sh rsvpdays 1     # remind me daily
+./scripts/configure.sh rsvpdays 7     # weekly
+./scripts/configure.sh rsvpdays 0     # stop them
+./scripts/configure.sh rsvphour 8     # hour of day, UTC
+```
+
+Reminders group by meeting, not by occurrence, so a recurring series is one entry with
+a count. Only invitations starting within `RsvpHorizonDays` (60 by default) are
+listed.
+
 ## Watchdog says a connection is failing
 
 Go to **make.powerautomate.com → Connections** and reauthorise the one named.

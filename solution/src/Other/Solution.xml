@@ -122,6 +122,12 @@
       <RootComponent type="380" schemaName="o3gc_ListSizeWarnAt" behavior="0" />
       <RootComponent type="380" schemaName="o3gc_NotifyOnChange" behavior="0" />
       <RootComponent type="380" schemaName="o3gc_HidePrivateEventDetails" behavior="0" />
+      <RootComponent type="380" schemaName="o3gc_VerifySlices" behavior="0" />
+      <RootComponent type="380" schemaName="o3gc_MaxVerifyPerRun" behavior="0" />
+      <RootComponent type="29" id="{9c1f4a20-3b77-4e51-9a3d-5e2b10c7d009}" behavior="0" />
+      <RootComponent type="380" schemaName="o3gc_RsvpReminderDays" behavior="0" />
+      <RootComponent type="380" schemaName="o3gc_RsvpReminderHour" behavior="0" />
+      <RootComponent type="380" schemaName="o3gc_RsvpHorizonDays" behavior="0" />
     </RootComponents>
     <MissingDependencies />
   </SolutionManifest>

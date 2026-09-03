@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{89993229-b38d-5085-9918-1c30f43d2fdc}" schemaname="o3gc_RsvpReminderDays">
+  <displayname>RsvpReminderDays</displayname>
+  <description>How often to email the outstanding-invitations reminder, in days. 1 for daily, 7 for weekly. 0 turns it off.</description>
+  <type>100000001</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>3</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

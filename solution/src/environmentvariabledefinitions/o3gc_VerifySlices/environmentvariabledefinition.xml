@@ -1,0 +1,9 @@
+<environmentvariabledefinition environmentvariabledefinitionid="{5d222f11-cc6f-52a4-a60f-7249c36dbeec}" schemaname="o3gc_VerifySlices">
+  <displayname>VerifySlices</displayname>
+  <description>How many runs a full existence check is spread over. Each run verifies one slice, so 16 means every mirrored event is checked about every four hours at roughly one extra Google call per run. Lower is faster and costs more.</description>
+  <type>100000001</type>
+  <isrequired>0</isrequired>
+  <defaultvalue>16</defaultvalue>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+</environmentvariabledefinition>

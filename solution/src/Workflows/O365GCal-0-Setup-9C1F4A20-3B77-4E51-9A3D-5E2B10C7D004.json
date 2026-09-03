@@ -1546,7 +1546,7 @@
         "Seed_Health_Rows": {
           "type": "Foreach",
           "description": "One row per monitored flow, each carrying its own staleness threshold. A single global threshold marked the daily digest as broken for 22 hours out of every 24.",
-          "foreach": "@json('[{\"name\": \"3 Reconcile\", \"stale\": 45, \"affects\": \"yes\"}, {\"name\": \"5 Watchdog\", \"stale\": 180, \"affects\": \"no\"}, {\"name\": \"4 Digest\", \"stale\": 1800, \"affects\": \"no\"}, {\"name\": \"6 Backup State\", \"stale\": 1800, \"affects\": \"no\"}]')",
+          "foreach": "@json('[{\"name\": \"3 Reconcile\", \"stale\": 45, \"affects\": \"yes\"}, {\"name\": \"5 Watchdog\", \"stale\": 180, \"affects\": \"no\"}, {\"name\": \"4 Digest\", \"stale\": 1800, \"affects\": \"no\"}, {\"name\": \"6 Backup State\", \"stale\": 1800, \"affects\": \"no\"}, {\"name\": \"8 Invitation Reminder\", \"stale\": 180, \"affects\": \"no\"}]')",
           "runtimeConfiguration": {
             "concurrency": {
               "repetitions": 1

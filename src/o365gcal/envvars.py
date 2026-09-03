@@ -90,6 +90,22 @@ CATALOGUE: list[EnvVar] = [
            "Circuit breaker. If one run would delete more than this share of mirrored events, it deletes nothing and alerts instead - a short Outlook read looks identical to a mass cancellation."),
     EnvVar("MinDeletesBeforeBreaker", NUMBER, "5",
            "Absolute floor below which the delete percentage rule is not applied, so a sparse calendar can still have events legitimately removed."),
+    EnvVar("RsvpReminderDays", NUMBER, "3",
+           "How often to email the outstanding-invitations reminder, in days. 1 for "
+           "daily, 7 for weekly. 0 turns it off."),
+    EnvVar("RsvpReminderHour", NUMBER, "8",
+           "Hour of day (0-23, UTC) to send the invitations reminder. The default 8 "
+           "avoids the small hours."),
+    EnvVar("RsvpHorizonDays", NUMBER, "60",
+           "Only mention unanswered invitations starting within this many days. A "
+           "meeting eight months out is not urgent and crowds out ones that are."),
+    EnvVar("VerifySlices", NUMBER, "16",
+           "How many runs a full existence check is spread over. Each run verifies one "
+           "slice, so 16 means every mirrored event is checked about every four hours "
+           "at roughly one extra Google call per run. Lower is faster and costs more."),
+    EnvVar("MaxVerifyPerRun", NUMBER, "10",
+           "Ceiling on existence checks per run, so a large calendar cannot spend the "
+           "Google connector's whole per-minute budget on verification."),
     EnvVar("HeartbeatStaleMinutes", NUMBER, "90",
            "Watchdog threshold. Alerts if a flow has not recorded a successful run within this many minutes."),
     EnvVar("LogRetentionDays", NUMBER, "90",
