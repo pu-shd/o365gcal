@@ -12,7 +12,7 @@
 #   ./scripts/configure.sh dryrun off         start writing to Google for real
 #   ./scripts/configure.sh private on         hide details of private events
 #   ./scripts/configure.sh calendar           choose the Google calendar from a list
-#   ./scripts/configure.sh email you@x.com    where alerts go
+#   ./scripts/configure.sh email you@example.com    where alerts go
 #   ./scripts/configure.sh window 7 120       days back, days ahead
 source "${0:A:h}/common.sh"
 require_auth

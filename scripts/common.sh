@@ -195,22 +195,38 @@ PY
 # entry naming a variable the solution no longer declares fails the whole import with
 # "some references included in the solution are not present in the organization". So
 # the provided values are re-projected onto the variables the solution actually has.
+#
+# Precedence is live value, then the provided file, then the solution default. The
+# live value comes first because an import applies whatever the settings file says:
+# preferring the default would silently undo a setting somebody changed with
+# configure.sh, which is exactly what happened to NotifyOnChange - turned on, then
+# reset by the next redeploy.
 reconcile_settings() {
-  local provided="$1" zip="$2" out="$3" template
+  local provided="$1" zip="$2" out="$3" template live
   template="$(mktemp -t o365gcal-template)"
+  live="$(mktemp -t o365gcal-live)"
   pac solution create-settings --solution-zip "$zip" --settings-file "$template" >/dev/null 2>&1 \
     || die "could not read the solution's settings template"
+  live_env_values "$live" 2>/dev/null || print '{}' > "$live"
 
   local py="python3"
   [[ -x "$REPO_ROOT/.venv/bin/python" ]] && py="$REPO_ROOT/.venv/bin/python"
-  "$py" - "$template" "$provided" "$out" <<'PY'
+  "$py" - "$template" "$provided" "$out" "$live" <<'PY'
 import json, sys
 
-template, provided, out = sys.argv[1:4]
+template, provided, out, livefile = sys.argv[1:5]
 tmpl = json.load(open(template))
 have = json.load(open(provided))
+try:
+    live = json.load(open(livefile))
+except Exception:
+    live = {}
 
 values = {e["SchemaName"]: e.get("Value") for e in have.get("EnvironmentVariables", [])}
+# Live wins: a value someone set with configure.sh must survive a redeploy.
+for name, value in live.items():
+    if value is not None and str(value).strip():
+        values[name] = value
 conns = {c["LogicalName"]: c.get("ConnectionId")
          for c in have.get("ConnectionReferences", [])}
 
@@ -240,6 +256,11 @@ for cr in tmpl.get("ConnectionReferences", []):
 json.dump(tmpl, open(out, "w"), indent=2)
 if dropped:
     print("  dropped (no longer in the solution): " + ", ".join(sorted(dropped)))
+carried = sorted(n for n, v in live.items()
+                 if v is not None and str(v).strip()
+                 and n in {e["SchemaName"] for e in kept})
+if carried:
+    print(f"  carried {len(carried)} live value(s) forward unchanged")
 if missing:
     print("  taking the solution default for: " + ", ".join(sorted(missing)))
 print(f"  {len(kept)} variable(s), {len(tmpl.get('ConnectionReferences', []))} connection reference(s)")

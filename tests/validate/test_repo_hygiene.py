@@ -88,7 +88,8 @@ EXAMPLE_DOMAINS = ("example.com", "example.org", "example.net", "contoso.com")
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
 #: Addresses that are structurally email-shaped but are not addresses.
-_NOT_ADDRESSES = ("@group.calendar.google.com", "@example", "@{", "o365gcal-key")
+_NOT_ADDRESSES = ("@group.calendar.google.com", "@example", "@{", "o365gcal-key",
+                  "@odata")  # OData annotations such as Id@odata.bind are not addresses
 
 
 def test_no_real_email_addresses_are_tracked():

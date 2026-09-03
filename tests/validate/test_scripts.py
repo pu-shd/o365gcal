@@ -306,3 +306,15 @@ def test_configure_offers_plain_language_toggles():
     assert "NOT INSTALLED" in text, (
         "a setting missing from the environment must not render as merely 'off'"
     )
+
+
+def test_reconcile_prefers_the_live_value_over_a_default():
+    """An import applies whatever the settings file says, so taking the solution
+    default for a variable the file does not mention silently undoes anything set with
+    configure.sh. NotifyOnChange was turned on and then reset by the next redeploy."""
+    text = (ROOT / "scripts" / "common.sh").read_text()
+    assert "live_env_values" in text.split("reconcile_settings()")[1][:900], (
+        "reconcile_settings must read the live values"
+    )
+    assert "Live wins" in text
+    assert "carried" in text, "should report how many live values were preserved"
