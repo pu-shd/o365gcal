@@ -618,7 +618,7 @@
                     ]
                   },
                   "type": "If",
-                  "description": "Second clause is the throttle cap: once the budget is spent the rest is counted and left for the next run rather than failing mid-batch.",
+                  "description": "Applies only while there is budget and Google is not throttling. A Foreach cannot break, so each iteration is guarded and the remainder counts as deferred to the next run.",
                   "expression": {
                     "and": [
                       {
@@ -633,6 +633,12 @@
                         "less": [
                           "@length(variables('Applied'))",
                           "@int(parameters('MaxMutationsPerRun (o3gc_MaxMutationsPerRun)'))"
+                        ]
+                      },
+                      {
+                        "equals": [
+                          "@variables('Throttled')",
+                          false
                         ]
                       }
                     ]
@@ -655,10 +661,8 @@
                     },
                     "Count_Applied": {
                       "runAfter": {
-                        "Run_Apply_Event": [
-                          "Succeeded",
-                          "Failed",
-                          "TimedOut"
+                        "Note_Throttled": [
+                          "Succeeded"
                         ]
                       },
                       "type": "AppendToArrayVariable",
@@ -683,6 +687,36 @@
                           "subject": "@outputs('Compose_Subject')",
                           "startsAt": "@item()?['startWithTimeZone']"
                         }
+                      }
+                    },
+                    "Note_Throttled": {
+                      "runAfter": {
+                        "Run_Apply_Event": [
+                          "Succeeded",
+                          "Failed",
+                          "TimedOut"
+                        ]
+                      },
+                      "type": "If",
+                      "description": "Stops the rest of the run rather than retrying into a window that is already exhausted.",
+                      "expression": {
+                        "equals": [
+                          "@coalesce(body('Run_Apply_Event')?['throttled'], false)",
+                          true
+                        ]
+                      },
+                      "actions": {
+                        "Set_Throttled": {
+                          "runAfter": {},
+                          "type": "SetVariable",
+                          "inputs": {
+                            "name": "Throttled",
+                            "value": true
+                          }
+                        }
+                      },
+                      "else": {
+                        "actions": {}
                       }
                     }
                   },
@@ -836,9 +870,19 @@
                         "runAfter": {},
                         "type": "If",
                         "expression": {
-                          "less": [
-                            "@length(variables('Applied'))",
-                            "@int(parameters('MaxMutationsPerRun (o3gc_MaxMutationsPerRun)'))"
+                          "and": [
+                            {
+                              "less": [
+                                "@length(variables('Applied'))",
+                                "@int(parameters('MaxMutationsPerRun (o3gc_MaxMutationsPerRun)'))"
+                              ]
+                            },
+                            {
+                              "equals": [
+                                "@variables('Throttled')",
+                                false
+                              ]
+                            }
                           ]
                         },
                         "actions": {
@@ -927,7 +971,7 @@
                     "Accept": "application/json;odata=nometadata",
                     "Content-Type": "application/json;odata=nometadata"
                   },
-                  "parameters/body": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'Title', variables('RunId')), 'Timestamp', utcNow()), 'FlowName', '3 Reconcile'), 'Level', if(greater(variables('Deferred'), 0), 'Warn', 'Info')), 'Operation', 'NoOp'), 'Message', concat('Reconcile complete. Outlook events: ', string(outputs('Guard_Outlook_Read')), '; active map rows: ', string(length(variables('ActiveRows'))), '; mutations applied: ', string(length(variables('Applied'))), '; deferred to next run: ', string(variables('Deferred')), '.'))"
+                  "parameters/body": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'Title', variables('RunId')), 'Timestamp', utcNow()), 'FlowName', '3 Reconcile'), 'Level', if(greater(variables('Deferred'), 0), 'Warn', 'Info')), 'Operation', 'NoOp'), 'Message', concat('Reconcile complete. Outlook events: ', string(outputs('Guard_Outlook_Read')), '; active map rows: ', string(length(variables('ActiveRows'))), '; mutations applied: ', string(length(variables('Applied'))), '; deferred to next run: ', string(variables('Deferred')), if(variables('Throttled'), '. STOPPED EARLY: Google reported rate limiting.', '.')))"
                 }
               }
             },
@@ -1283,7 +1327,7 @@
         },
         "Get_Health_Row": {
           "runAfter": {
-            "Init_Changes": [
+            "Init_Throttled": [
               "Succeeded"
             ]
           },
@@ -1377,6 +1421,24 @@
                 "name": "Changes",
                 "type": "array",
                 "value": []
+              }
+            ]
+          }
+        },
+        "Init_Throttled": {
+          "runAfter": {
+            "Init_Changes": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "description": "Set when Google reports rate limiting. The mutation cap counts attempts, not API calls: a retried call is up to five calls, so a throttled run could spend far more than its budget without this.",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Throttled",
+                "type": "boolean",
+                "value": false
               }
             ]
           }

@@ -1110,3 +1110,38 @@ def test_invitation_reminder_can_be_switched_off():
     assert {"greater": ["@int(parameters('RsvpReminderDays (o3gc_RsvpReminderDays)'))", 0]} in window, (
         "RsvpReminderDays of 0 must stop the reminders entirely"
     )
+
+
+def test_child_flow_reports_throttling():
+    """The mutation cap counts attempts, not API calls: with four retries per action a
+    60-mutation cap can become 300 calls. The caller needs to know it is being
+    throttled so it can stop rather than retry into an exhausted window."""
+    path = next(p for p in WORKFLOWS if "ApplyEvent" in p.name)
+    acts = dict(walk_actions(definition(path)["actions"]))
+    assert "Detect_Throttling" in acts
+    expr = json.dumps(acts["Detect_Throttling"]["expression"])
+    assert "429" in expr and "ratelimit" in expr
+    body = acts["Respond_to_the_calling_flow"]["inputs"]["body"]
+    assert body.get("throttled") == "@variables('Throttled')"
+
+
+def test_reconcile_stops_applying_when_throttled():
+    """A Foreach cannot break, so every iteration is guarded instead."""
+    path = next(p for p in WORKFLOWS if "3-Reconcile" in p.name)
+    T = definition(path)["actions"]["Try_Reconcile"]["actions"]
+    cond = T["For_Each_Outlook_Event"]["actions"]["Apply_If_Needed"]["expression"]["and"]
+    assert {"equals": ["@variables('Throttled')", False]} in cond
+
+    delete = (T["Circuit_Breaker"]["else"]["actions"]["For_Each_Delete"]["actions"]
+              ["Apply_Delete"]["expression"]["and"])
+    assert {"equals": ["@variables('Throttled')", False]} in delete, (
+        "deletes must stop too, or the run keeps spending after the mutation phase"
+    )
+
+
+def test_a_throttled_run_says_so():
+    """A run that stopped early must not read as one that finished the work."""
+    path = next(p for p in WORKFLOWS if "3-Reconcile" in p.name)
+    body = (definition(path)["actions"]["Try_Reconcile"]["actions"]["Log_Run_Summary"]
+            ["inputs"]["parameters"]["parameters/body"])
+    assert "STOPPED EARLY" in body

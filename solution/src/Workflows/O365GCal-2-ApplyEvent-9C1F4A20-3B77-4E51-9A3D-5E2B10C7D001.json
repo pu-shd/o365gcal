@@ -125,7 +125,7 @@
         },
         "Init_GoogleEventId": {
           "runAfter": {
-            "Init_RunId": [
+            "Init_Throttled": [
               "Succeeded"
             ]
           },
@@ -519,7 +519,11 @@
                 "description": "Records the failure and returns without rethrowing, so one poisoned event cannot stall the whole reconcile batch.",
                 "actions": {
                   "Log_Error": {
-                    "runAfter": {},
+                    "runAfter": {
+                      "Detect_Throttling": [
+                        "Succeeded"
+                      ]
+                    },
                     "type": "OpenApiConnection",
                     "inputs": {
                       "host": {
@@ -583,6 +587,46 @@
                     "else": {
                       "actions": {}
                     }
+                  },
+                  "Detect_Throttling": {
+                    "runAfter": {},
+                    "type": "If",
+                    "description": "A 429 is a budget problem, not a bad event: the caller should stop rather than retry every remaining event into the same window.",
+                    "expression": {
+                      "or": [
+                        {
+                          "contains": [
+                            "@toLower(string(result('Try_Apply')))",
+                            "429"
+                          ]
+                        },
+                        {
+                          "contains": [
+                            "@toLower(string(result('Try_Apply')))",
+                            "ratelimit"
+                          ]
+                        },
+                        {
+                          "contains": [
+                            "@toLower(string(result('Try_Apply')))",
+                            "too many requests"
+                          ]
+                        }
+                      ]
+                    },
+                    "actions": {
+                      "Set_Throttled": {
+                        "runAfter": {},
+                        "type": "SetVariable",
+                        "inputs": {
+                          "name": "Throttled",
+                          "value": true
+                        }
+                      }
+                    },
+                    "else": {
+                      "actions": {}
+                    }
                   }
                 }
               }
@@ -600,14 +644,15 @@
           },
           "type": "Response",
           "kind": "PowerApp",
-          "description": "Required, not decorative: Power Automate refuses to activate any parent that calls a child flow without a response action (ChildFlowMissingResponseOperation). It also runs after every outcome of the apply scope, so a failure on one event returns a result",
+          "description": "Required: Power Automate refuses to activate any parent calling a child without a response action. Also reports whether the failure was rate limiting, so the caller can stop spending a budget it has already exhausted.",
           "inputs": {
             "statusCode": 200,
             "body": {
               "correlationKey": "@{triggerBody()?['text']}",
               "operation": "@{triggerBody()?['text_1']}",
               "googleEventId": "@{variables('GoogleEventId')}",
-              "runId": "@{variables('RunId')}"
+              "runId": "@{variables('RunId')}",
+              "throttled": "@variables('Throttled')"
             },
             "schema": {
               "type": "object",
@@ -623,9 +668,30 @@
                 },
                 "runId": {
                   "type": "string"
+                },
+                "throttled": {
+                  "type": "boolean"
                 }
               }
             }
+          }
+        },
+        "Init_Throttled": {
+          "runAfter": {
+            "Init_RunId": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "description": "Reported back to the caller so it can stop spending a per-minute budget that is already exhausted.",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Throttled",
+                "type": "boolean",
+                "value": false
+              }
+            ]
           }
         }
       },

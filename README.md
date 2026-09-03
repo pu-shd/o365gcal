@@ -76,6 +76,21 @@ make export        # pull maker-portal edits back into solution/src
 `solution/src/` is the source of truth. Edits made in the maker portal are pulled back
 with `make export`; never hand-edit the zips.
 
+## Behaviour at a glance
+
+| | |
+|---|---|
+| Sync direction | One-way, Outlook → Google |
+| Latency | ~15 minutes worst case, usually less |
+| Recurring meetings | Expanded to individual Google events |
+| Deletions | Detected by absence on a full calendar read |
+| Google-side deletions | Detected within ~4 hours by a rotating sweep |
+| Unchanged events | Cost zero API calls |
+| Worst-case API spend | 70 of the connector's 100 calls per 60 seconds |
+
+Full detail, including every limit guard, in
+**[docs/SYNCHRONIZATION.md](docs/SYNCHRONIZATION.md)**.
+
 ## How it works, briefly
 
 Six flows. The **scheduled reconciler is the engine of record** — it diffs a full
@@ -107,6 +122,8 @@ docs/             INSTALL, ADMIN, ARCHITECTURE, TROUBLESHOOTING
 
 ## Documentation
 
+- **[SYNCHRONIZATION.md](docs/SYNCHRONIZATION.md)** — what gets mirrored, when, and
+  every guard against the API limits. The behavioural reference.
 - **[INSTALL.md](docs/INSTALL.md)** — install and configure
 - **[ADMIN.md](docs/ADMIN.md)** — DLP, rollout, licensing, second-layer alerting
 - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** — why it is shaped this way
