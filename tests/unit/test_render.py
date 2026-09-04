@@ -89,7 +89,7 @@ def test_busy_only_sends_no_attendee_data_at_all(config):
     e.sensitivity = Sensitivity.PRIVATE
     payload = render_google_event(e, config)
     assert "attendees" not in payload
-    assert "princeton.edu" not in payload["description"]
+    assert "example.com" not in payload["description"], "attendee addresses must not survive into the description"
 
 
 def test_title_prefix_applied(config):

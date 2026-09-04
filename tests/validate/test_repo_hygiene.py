@@ -63,7 +63,7 @@ TENANT_MARKERS = {
 }
 
 #: Placeholders that deliberately look like the real thing.
-ALLOWED = ("contoso", "CONTOSO", "example.com", "<your", "princetonu.sharepoint.com/sites/O365GCal")
+ALLOWED = ("contoso", "CONTOSO", "example.com", "<your")
 
 
 @pytest.mark.parametrize("pattern,what", sorted(TENANT_MARKERS.items()))
