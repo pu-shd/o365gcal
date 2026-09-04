@@ -6,6 +6,7 @@ or, worse, silently at runtime in someone else's tenant.
 
 import json
 import re
+from datetime import datetime, timezone
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -990,7 +991,8 @@ def test_watchdog_advice_matches_what_is_actually_broken():
     path = next(p for p in WORKFLOWS if "5-Watchdog" in p.name)
     body = (definition(path)["actions"]["Alert_If_Broken"]["actions"]
             ["Send_Breakage_Alert"]["inputs"]["parameters"]["emailMessage/Body"])
-    assert "both connections are healthy" in body
+    # Case-insensitive: the phrase opens a sentence in some wordings.
+    assert "both connections are healthy" in body.lower()
     assert body.count("Connection_Broken") >= 2, (
         "impact and advice must both be conditional on the probe result"
     )
@@ -1195,3 +1197,66 @@ def test_the_heartbeat_is_not_gated_by_a_condition(flow):
             f"{flow}: {name} is nested inside {conditional}, so a run that takes the "
             f"other path leaves the heartbeat unwritten and the watchdog cries wolf"
         )
+
+
+def _watchdog_alert():
+    acts = definition(_watchdog())["actions"]
+    for name, action in walk_actions(acts):
+        if name == "Send_Breakage_Alert":
+            return action["inputs"]["parameters"]
+    raise AssertionError("no Send_Breakage_Alert in the watchdog")
+
+
+def _stale_html():
+    for name, action in walk_actions(definition(_watchdog())["actions"]):
+        if name == "Select_Stale_Html":
+            return action["inputs"]["select"]
+    raise AssertionError("no Select_Stale_Html in the watchdog")
+
+
+def test_the_alert_quotes_the_reconcile_cadence_it_actually_runs_at():
+    """The alert told people the reconciler runs every 30 minutes while the trigger
+    fired every 15. A number in a health email is a promise about the system."""
+    path = next(p for p in WORKFLOWS if "3-Reconcile" in p.name)
+    rec = list(definition(path)["triggers"].values())[0]["recurrence"]
+    assert rec["frequency"] == "Minute", "this test assumes a minute-based reconciler"
+    minutes = rec["interval"]
+
+    body = _watchdog_alert()["emailMessage/Body"]
+    assert f"reconciler every {minutes} minutes" in body, (
+        f"the alert must quote the real cadence ({minutes} min), not a stale one"
+    )
+
+
+def test_the_alert_reports_time_in_units_a_person_reads():
+    """'threshold 1800 min' is a number out of a config file. Nobody converts that to
+    30 hours while reading an alert at their desk."""
+    select = _stale_html()
+    assert "' min'" not in select, "raw minutes leaked into the alert"
+    assert "div(" in select and "60" in select, "long thresholds must render as hours"
+    assert "formatDateTime(" in select, "the timestamp must be formatted, not raw ISO"
+
+
+def test_the_alert_tells_a_healthy_but_late_flow_apart_from_a_broken_one():
+    """The old advice was 'look at their run history for the failure' - which sends
+    someone hunting for a failure that is not there when only the heartbeat is late."""
+    body = _watchdog_alert()["emailMessage/Body"]
+    assert "recent runs all succeeded" in body, (
+        "say what it means when the flow is fine and only its check-in is late"
+    )
+    assert "still syncing normally" in body, (
+        "when only a supporting flow is late, say so plainly"
+    )
+
+
+def test_the_alert_renders_for_a_flow_that_has_never_reported():
+    """if() evaluates both branches, so a null LastSuccessUtc would throw inside the
+    branch that is not chosen. The row exists before the flow has ever run."""
+    from wdl import Evaluator
+
+    row = {"Title": "4 Digest", "LastSuccessUtc": None,
+           "StaleAfterMinutes": 1800, "AffectsSync": "no"}
+    now = datetime(2026, 9, 4, 22, 54, tzinfo=timezone.utc)
+    out = Evaluator({"item": row, "utcNow": now}).eval(_stale_html().lstrip("@"))
+    assert "never reported in" in out
+    assert "30 hours" in out

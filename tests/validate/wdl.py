@@ -115,7 +115,17 @@ def _dt(value: Any) -> datetime:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
-_FORMATS = {"yyyy-MM-ddTHH:mm:ss\\Z": "%Y-%m-%dT%H:%M:%SZ", "yyyy-MM-ddTHH:mm:ssZ": "%Y-%m-%dT%H:%M:%SZ"}
+_FORMATS = {
+    "yyyy-MM-ddTHH:mm:ss\\Z": "%Y-%m-%dT%H:%M:%SZ",
+    "yyyy-MM-ddTHH:mm:ssZ": "%Y-%m-%dT%H:%M:%SZ",
+    # Human-facing formats used in the alert and reminder emails. %-d drops the
+    # leading zero, which is what "d" means in the .NET format Power Automate uses.
+    "ddd d MMM": "%a %-d %b",
+    "ddd d MMM, HH:mm": "%a %-d %b, %H:%M",
+    "HH:mm": "%H:%M",
+    "HH": "%H",
+    "dd": "%d",
+}
 
 
 class Evaluator:
