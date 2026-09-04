@@ -105,6 +105,24 @@ Go to **make.powerautomate.com → Connections** and reauthorise the one named.
 Google connections break most often: Google revokes refresh tokens on password change
 and after long inactivity. Nothing is lost — the next reconcile catches up.
 
+## An hourly health report about a supporting flow
+
+The report says the reconciler is healthy and lists one supporting flow as past its
+threshold, and it arrives again every hour. Before version 1.1 this was usually the
+watchdog being right about the wrong thing: the flow was running fine, but was not
+writing its heartbeat on every run.
+
+* **8 Invitation Reminder** stamped its heartbeat inside the send-window condition, so
+  the row was written for one hour every `RsvpReminderDays` and was stale for the rest.
+* **6 Backup State** never stamped a heartbeat at all. Its row is seeded at install, so
+  it looked healthy for one day and then reported stale forever.
+
+Both are fixed by upgrading: `make build && ./scripts/update.sh`. The alerts stop after
+the next run of each flow — within the hour for flow 8, at 02:00 UTC for flow 6.
+
+If you are already on 1.1 or later, the flow really is failing: open its run history in
+**make.powerautomate.com → Solutions → O365GCal**.
+
 ## I stopped getting any emails at all
 
 That is the case the watchdog cannot cover, because it may itself be off. Check:

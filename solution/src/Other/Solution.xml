@@ -10,7 +10,7 @@
     <Descriptions>
       <Description description="One-way mirror of an Outlook calendar onto a target Google Calendar, with logging, reconciliation, change digests and breakage alerts. Standard connectors only." languagecode="1033" />
     </Descriptions>
-    <Version>1.0.0.0</Version>
+    <Version>1.1.0.0</Version>
     <!-- Solution Package Type: Unmanaged(0)/Managed(1)/Both(2)-->
     <Managed>2</Managed>
     <Publisher>

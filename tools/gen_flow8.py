@@ -206,8 +206,17 @@ INNER["Check_Any_Outstanding"] = {
                        "emailMessage/Importance": "Normal"}}}},
     "else": {"actions": {}}}
 
-INNER["Get_Health_Row"] = {
-    "runAfter": {"Check_Any_Outstanding": ["Succeeded"]}, "type": "OpenApiConnection",
+# The heartbeat is stamped at the TOP level, after the send-window condition rather
+# than inside it. Nested, it was only written on a send day - roughly one hour in
+# every RsvpReminderDays * 24 - so the watchdog's 180-minute threshold went stale
+# within three hours of every send and alerted hourly until the next one. What is
+# being monitored is that the flow woke up and evaluated its window, which is exactly
+# what the hourly trigger does; whether it decided to send is not a health fact.
+A["Get_Health_Row"] = {
+    "runAfter": {"Check_Send_Window": ["Succeeded"]}, "type": "OpenApiConnection",
+    "description": d("Stamped on every hourly evaluation, not only on send days: the "
+                     "watchdog is checking that this flow is alive, and a quiet day is "
+                     "not a failure."),
     "inputs": {"host": {"connectionName": "shared_sharepointonline",
                         "operationId": "HttpRequest", "apiId": SP_API},
                "parameters": {"dataset": "@" + E("StateSiteUrl"),
@@ -215,7 +224,7 @@ INNER["Get_Health_Row"] = {
                               "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', " + E("HealthListName") + ", ''')/items?$select=Id&$filter=Title eq ''8 Invitation Reminder''&$top=1')}",
                               "parameters/headers": {"Accept": "application/json;odata=nometadata"}}}}
 
-INNER["Stamp_Health"] = {
+A["Stamp_Health"] = {
     "runAfter": {"Get_Health_Row": ["Succeeded"]}, "type": "OpenApiConnection",
     "inputs": {"host": {"connectionName": "shared_sharepointonline",
                         "operationId": "HttpRequest", "apiId": SP_API},

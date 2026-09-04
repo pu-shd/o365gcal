@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+from o365gcal.schema import HEARTBEAT_EXPECTATIONS
+
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "solution" / "src"
 WORKFLOWS = sorted((SRC / "Workflows").glob("*.json"))
@@ -898,8 +900,6 @@ def test_only_the_reconciler_may_claim_the_calendar_is_stale():
 
 
 def test_setup_seeds_a_threshold_for_every_monitored_flow():
-    from o365gcal.schema import HEARTBEAT_EXPECTATIONS
-
     path = next(p for p in WORKFLOWS if "0-Setup" in p.name)
     seed = definition(path)["actions"]["Seed_Health_Rows"]
     for flow, minutes in HEARTBEAT_EXPECTATIONS.items():
@@ -1145,3 +1145,53 @@ def test_a_throttled_run_says_so():
     body = (definition(path)["actions"]["Try_Reconcile"]["actions"]["Log_Run_Summary"]
             ["inputs"]["parameters"]["parameters/body"])
     assert "STOPPED EARLY" in body
+
+
+def _flow_for(flow_name):
+    """'8 Invitation Reminder' -> the workflow JSON whose file name starts with 8."""
+    number = flow_name.split()[0]
+    return next(p for p in WORKFLOWS if p.name.split("-")[1] == number)
+
+
+def _heartbeat_writes(actions, ancestors=()):
+    """Yield (name, ancestors) for every action that stamps LastSuccessUtc on a row.
+
+    Reads are excluded: flow 5 selects the column, which is not a write."""
+    for name, action in (actions or {}).items():
+        params = (action.get("inputs") or {}).get("parameters", {}) if isinstance(action.get("inputs"), dict) else {}
+        if "LastSuccessUtc" in str(params.get("parameters/body", "")):
+            yield name, ancestors
+        for key in ("actions", "else"):
+            block = action.get(key)
+            if isinstance(block, dict):
+                yield from _heartbeat_writes(block.get("actions", block),
+                                             ancestors + ((name, action.get("type")),))
+
+
+@pytest.mark.parametrize("flow", sorted(HEARTBEAT_EXPECTATIONS))
+def test_every_monitored_flow_stamps_its_own_heartbeat(flow):
+    """Flow 6 was monitored with a 30-hour threshold and never wrote its row at all.
+    Setup seeds it with utcNow(), so it looked healthy for exactly one day after
+    install and then alerted forever."""
+    writes = list(_heartbeat_writes(definition(_flow_for(flow))["actions"]))
+    assert writes, (
+        f"{flow} has a staleness threshold but never stamps LastSuccessUtc, so the "
+        f"watchdog will report it as broken once the seeded row ages out"
+    )
+
+
+@pytest.mark.parametrize("flow", sorted(HEARTBEAT_EXPECTATIONS))
+def test_the_heartbeat_is_not_gated_by_a_condition(flow):
+    """Flow 8 stamped health inside its send-window condition, so the row was written
+    for one hour every RsvpReminderDays and the watchdog alerted hourly in between.
+
+    A heartbeat answers 'did this flow run', not 'did it decide to do work', so it
+    must be reached on every run. Scopes are fine - they always execute; branches and
+    loops are not."""
+    gating = {"If", "Switch", "Foreach", "Until"}
+    for name, ancestors in _heartbeat_writes(definition(_flow_for(flow))["actions"]):
+        conditional = [a for a, kind in ancestors if kind in gating]
+        assert not conditional, (
+            f"{flow}: {name} is nested inside {conditional}, so a run that takes the "
+            f"other path leaves the heartbeat unwritten and the watchdog cries wolf"
+        )

@@ -465,6 +465,57 @@
               "Failed"
             ]
           }
+        },
+        "Get_Own_Health": {
+          "type": "OpenApiConnection",
+          "description": "This flow was monitored but never stamped its own heartbeat, so its seeded row went stale 30 hours after install and stayed that way.",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "GET",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items?$select=Id&$filter=Title eq ''6 Backup State''&$top=1')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata"
+              }
+            }
+          },
+          "runAfter": {
+            "Log_Backup": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Stamp_Own_Health": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items(', string(first(body('Get_Own_Health')?['value'])?['Id']), ')')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata",
+                "X-HTTP-Method": "MERGE",
+                "IF-MATCH": "*"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(json('{}'), 'LastSuccessUtc', utcNow()), 'LastRunUtc', utcNow()), 'LastRunStatus', 'Succeeded')"
+            }
+          },
+          "runAfter": {
+            "Get_Own_Health": [
+              "Succeeded"
+            ]
+          }
         }
       },
       "outputs": {}

@@ -303,56 +303,6 @@
               "else": {
                 "actions": {}
               }
-            },
-            "Get_Health_Row": {
-              "runAfter": {
-                "Check_Any_Outstanding": [
-                  "Succeeded"
-                ]
-              },
-              "type": "OpenApiConnection",
-              "inputs": {
-                "host": {
-                  "connectionName": "shared_sharepointonline",
-                  "operationId": "HttpRequest",
-                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
-                },
-                "parameters": {
-                  "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
-                  "parameters/method": "GET",
-                  "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items?$select=Id&$filter=Title eq ''8 Invitation Reminder''&$top=1')}",
-                  "parameters/headers": {
-                    "Accept": "application/json;odata=nometadata"
-                  }
-                }
-              }
-            },
-            "Stamp_Health": {
-              "runAfter": {
-                "Get_Health_Row": [
-                  "Succeeded"
-                ]
-              },
-              "type": "OpenApiConnection",
-              "inputs": {
-                "host": {
-                  "connectionName": "shared_sharepointonline",
-                  "operationId": "HttpRequest",
-                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
-                },
-                "parameters": {
-                  "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
-                  "parameters/method": "POST",
-                  "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items(', string(first(body('Get_Health_Row')?['value'])?['Id']), ')')}",
-                  "parameters/headers": {
-                    "Accept": "application/json;odata=nometadata",
-                    "Content-Type": "application/json;odata=nometadata",
-                    "X-HTTP-Method": "MERGE",
-                    "IF-MATCH": "*"
-                  },
-                  "parameters/body": "@setProperty(setProperty(setProperty(json('{}'), 'LastSuccessUtc', utcNow()), 'LastRunUtc', utcNow()), 'LastRunStatus', 'Succeeded')"
-                }
-              }
             }
           },
           "else": {
@@ -362,6 +312,57 @@
             "Init_Groups": [
               "Succeeded"
             ]
+          }
+        },
+        "Get_Health_Row": {
+          "runAfter": {
+            "Check_Send_Window": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "description": "Stamped on every hourly evaluation, not only on send days: the watchdog is checking that this flow is alive, and a quiet day is not a failure.",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "GET",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items?$select=Id&$filter=Title eq ''8 Invitation Reminder''&$top=1')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata"
+              }
+            }
+          }
+        },
+        "Stamp_Health": {
+          "runAfter": {
+            "Get_Health_Row": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items(', string(first(body('Get_Health_Row')?['value'])?['Id']), ')')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata",
+                "X-HTTP-Method": "MERGE",
+                "IF-MATCH": "*"
+              },
+              "parameters/body": "@setProperty(setProperty(setProperty(json('{}'), 'LastSuccessUtc', utcNow()), 'LastRunUtc', utcNow()), 'LastRunStatus', 'Succeeded')"
+            }
           }
         }
       },
