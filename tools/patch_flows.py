@@ -115,6 +115,14 @@ def main() -> int:
         if isinstance(value, str) and not value.startswith("@"):
             loop[name]["inputs"] = "@" + value
 
+    # The run summary reports elapsed time and raises its own level when the run
+    # outlived its cadence, so a degraded reconcile is visible in the log list rather
+    # than only inferable from the portal.
+    scope = doc["properties"]["definition"]["actions"]["Try_Reconcile"]["actions"]
+    scope["Log_Run_Summary"]["inputs"]["parameters"]["parameters/body"] = (
+        x.reconcile_summary_body()
+    )
+
     RECONCILE.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
     print(f"patched {RECONCILE.name}")
     return 0

@@ -191,6 +191,12 @@ class Evaluator:
             if fmt is None:
                 raise WdlError(f"unsupported date format {a[1]!r}")
             return _dt(a[0]).astimezone(timezone.utc).strftime(fmt)
+        if name == "ticks":
+            # .NET ticks: 100-nanosecond intervals since 0001-01-01T00:00:00Z. The
+            # run-duration expressions divide a difference of these by 600,000,000
+            # to get minutes.
+            base = datetime(1, 1, 1, tzinfo=timezone.utc)
+            return int((_dt(a[0]) - base).total_seconds() * 10_000_000)
         if name == "addDays":
             return (_dt(a[0]) + timedelta(days=int(a[1]))).strftime("%Y-%m-%dT%H:%M:%SZ")
         if name == "addMinutes":

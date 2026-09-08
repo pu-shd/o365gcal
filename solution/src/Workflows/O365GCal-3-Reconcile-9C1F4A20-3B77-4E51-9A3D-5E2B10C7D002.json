@@ -172,13 +172,18 @@
       "triggers": {
         "Every_15_minutes": {
           "type": "Recurrence",
-          "description": "Worst-case sync latency. Recurrence intervals cannot be driven by an environment variable, so changing this means editing the flow. Roughly five API calls per run plus one per change.",
+          "description": "Worst-case sync latency; changing it means editing the flow, as Recurrence intervals cannot be driven by a setting. concurrency.runs 1 keeps one sweep in flight: a reconcile is idempotent, so a skipped tick is free but overlapping stalled runs pile up.",
           "recurrence": {
             "frequency": "Minute",
             "interval": 15
           },
           "metadata": {
             "operationMetadataId": "9c1f4a20-3b77-4e51-9a3d-000000000002"
+          },
+          "runtimeConfiguration": {
+            "concurrency": {
+              "runs": 1
+            }
           }
         }
       },
@@ -196,9 +201,27 @@
             ]
           }
         },
-        "Init_OutlookEvents": {
+        "Init_RunStart": {
           "runAfter": {
             "Init_RunId": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "description": "The run's own start time. Nothing in the expression language exposes it, and the summary needs it to report how long the run actually took.",
+          "inputs": {
+            "variables": [
+              {
+                "name": "RunStart",
+                "type": "string",
+                "value": "@{utcNow()}"
+              }
+            ]
+          }
+        },
+        "Init_OutlookEvents": {
+          "runAfter": {
+            "Init_RunStart": [
               "Succeeded"
             ]
           },
@@ -971,7 +994,7 @@
                     "Accept": "application/json;odata=nometadata",
                     "Content-Type": "application/json;odata=nometadata"
                   },
-                  "parameters/body": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'Title', variables('RunId')), 'Timestamp', utcNow()), 'FlowName', '3 Reconcile'), 'Level', if(greater(variables('Deferred'), 0), 'Warn', 'Info')), 'Operation', 'NoOp'), 'Message', concat('Reconcile complete. Outlook events: ', string(outputs('Guard_Outlook_Read')), '; active map rows: ', string(length(variables('ActiveRows'))), '; mutations applied: ', string(length(variables('Applied'))), '; deferred to next run: ', string(variables('Deferred')), if(variables('Throttled'), '. STOPPED EARLY: Google reported rate limiting.', '.')))"
+                  "parameters/body": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'Title', variables('RunId')), 'Timestamp', utcNow()), 'FlowName', '3 Reconcile'), 'Level', if(or(greater(variables('Deferred'), 0), greater(div(sub(ticks(utcNow()), ticks(variables('RunStart'))), 600000000), 15)), 'Warn', 'Info')), 'Operation', 'NoOp'), 'Message', concat('Reconcile complete in ', string(div(sub(ticks(utcNow()), ticks(variables('RunStart'))), 600000000)), ' min. Outlook events: ', string(outputs('Guard_Outlook_Read')), '; active map rows: ', string(length(variables('ActiveRows'))), '; mutations applied: ', string(length(variables('Applied'))), '; deferred to next run: ', string(variables('Deferred')), if(variables('Throttled'), '. STOPPED EARLY: Google reported rate limiting.', '.'), if(greater(div(sub(ticks(utcNow()), ticks(variables('RunStart'))), 600000000), 15), ' SLOW: this run outlived its 15-minute schedule, so the next sweep started late.', '')))"
                 }
               }
             },

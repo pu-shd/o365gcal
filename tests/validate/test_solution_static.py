@@ -6,7 +6,7 @@ or, worse, silently at runtime in someone else's tenant.
 
 import json
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -1260,3 +1260,73 @@ def test_the_alert_renders_for_a_flow_that_has_never_reported():
     out = Evaluator({"item": row, "utcNow": now}).eval(_stale_html().lstrip("@"))
     assert "never reported in" in out
     assert "30 hours" in out
+
+
+def _reconcile():
+    return next(p for p in WORKFLOWS if "3-Reconcile" in p.name)
+
+
+def test_only_one_reconcile_runs_at_a_time():
+    """On 2026-09-08 a reconcile stalled mid-loop for 84 minutes. The trigger kept
+    firing every 15 minutes regardless, so eight runs were in flight at once and the
+    backlog sustained itself. A full sweep is idempotent, so at most one is ever
+    needed and a skipped tick costs nothing."""
+    trigger = list(definition(_reconcile())["triggers"].values())[0]
+    concurrency = (trigger.get("runtimeConfiguration") or {}).get("concurrency") or {}
+    assert concurrency.get("runs") == 1, (
+        "without trigger concurrency control, one slow run becomes a pile-up"
+    )
+    assert "maximumWaitingRuns" not in concurrency, (
+        "not valid on a Recurrence trigger; only 'runs' is"
+    )
+
+
+def test_the_slow_run_threshold_is_the_cadence_that_schedules_it():
+    """A run is 'slow' relative to its own trigger interval, so the two numbers must
+    not drift apart."""
+    from o365gcal.expressions import RECONCILE_CADENCE_MINUTES
+
+    rec = list(definition(_reconcile())["triggers"].values())[0]["recurrence"]
+    assert rec["frequency"] == "Minute", "this test assumes a minute-based reconciler"
+    assert RECONCILE_CADENCE_MINUTES == rec["interval"]
+
+
+def test_the_run_records_its_own_start_time():
+    """Elapsed time cannot be computed without it: the expression language exposes no
+    run start time."""
+    acts = definition(_reconcile())["actions"]
+    init = acts["Init_RunStart"]["inputs"]["variables"][0]
+    assert init["name"] == "RunStart"
+    assert "utcNow()" in init["value"]
+
+
+def test_the_run_summary_is_the_canonical_expression():
+    from o365gcal.expressions import reconcile_summary_body
+
+    body = (definition(_reconcile())["actions"]["Try_Reconcile"]["actions"]
+            ["Log_Run_Summary"]["inputs"]["parameters"]["parameters/body"])
+    assert body == reconcile_summary_body(), "run tools/patch_flows.py"
+
+
+def test_a_slow_run_does_not_log_itself_as_a_normal_one():
+    """Silence must not equate to success: an 84-minute run and a 40-second run wrote
+    the same 'Reconcile complete' line at the same Info level."""
+    from wdl import Evaluator
+    from o365gcal.expressions import reconcile_summary_level, reconcile_summary_message
+
+    start = datetime(2026, 9, 8, 9, 44, 14, tzinfo=timezone.utc)
+    ctx = {"variables": {"Deferred": 0, "Throttled": False, "ActiveRows": [],
+                         "Applied": [], "RunId": "r", "RunStart": start.isoformat()},
+           "outputs": {"Guard_Outlook_Read": 18}}
+
+    quick = dict(ctx, utcNow=start + timedelta(seconds=40))
+    assert Evaluator(quick).eval(reconcile_summary_level()) == "Info"
+    assert "SLOW" not in Evaluator(quick).eval(reconcile_summary_message())
+
+    stalled = dict(ctx, utcNow=start + timedelta(minutes=84))
+    assert Evaluator(stalled).eval(reconcile_summary_level()) == "Warn", (
+        "a run that outlived its cadence must not log at Info"
+    )
+    message = Evaluator(stalled).eval(reconcile_summary_message())
+    assert "SLOW" in message
+    assert "in 84 min" in message, message

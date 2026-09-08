@@ -250,3 +250,61 @@ def flow_description(key_expr: str = "outputs('Compose_Key')") -> str:
     return f"if({HIDDEN}, {hidden_block}, {visible_block})"
 
 
+
+
+# ---------------------------------------------------------------------------
+# Run duration
+#
+# A reconcile that outlives its own trigger interval has fallen behind, and until
+# now said nothing about it: an 84-minute run and a 40-second run wrote the same
+# cheerful "Reconcile complete" line. Silence is not success, so the summary
+# carries the elapsed time and escalates its own level when the run is slow.
+
+#: The trigger interval, in minutes. A run longer than this has fallen behind the
+#: schedule that starts it. Kept here so the flow's log and the flow's trigger cannot
+#: drift apart; a test ties this number to the trigger itself.
+RECONCILE_CADENCE_MINUTES = 15
+
+#: Wall-clock minutes since the run began. Nothing in the expression language exposes
+#: a run's own start time, so the run stamps one into a variable and this measures
+#: against it. One tick is 100 nanoseconds, so 600,000,000 ticks is 60 seconds.
+RUN_ELAPSED_MINUTES = "div(sub(ticks(utcNow()), ticks(variables('RunStart'))), 600000000)"
+
+
+def run_is_slow(cadence_minutes: int = RECONCILE_CADENCE_MINUTES) -> str:
+    """True when this run has already outlived the cadence that schedules it."""
+    return f"greater({RUN_ELAPSED_MINUTES}, {cadence_minutes})"
+
+
+def reconcile_summary_level() -> str:
+    """Warn on either kind of falling behind: work left undone, or time overrun."""
+    return f"if(or(greater(variables('Deferred'), 0), {run_is_slow()}), 'Warn', 'Info')"
+
+
+def reconcile_summary_message() -> str:
+    """The human-readable run summary, including how long the run actually took."""
+    return (
+        "concat('Reconcile complete in ', "
+        f"string({RUN_ELAPSED_MINUTES}), "
+        "' min. Outlook events: ', string(outputs('Guard_Outlook_Read')), "
+        "'; active map rows: ', string(length(variables('ActiveRows'))), "
+        "'; mutations applied: ', string(length(variables('Applied'))), "
+        "'; deferred to next run: ', string(variables('Deferred')), "
+        "if(variables('Throttled'), '. STOPPED EARLY: Google reported rate limiting.', '.'), "
+        f"if({run_is_slow()}, "
+        f"' SLOW: this run outlived its {RECONCILE_CADENCE_MINUTES}-minute schedule, "
+        "so the next sweep started late.', ''))"
+    )
+
+
+def reconcile_summary_body() -> str:
+    """The full log row for a completed reconcile."""
+    return (
+        "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty("
+        "json('{}'), 'Title', variables('RunId')), "
+        "'Timestamp', utcNow()), "
+        "'FlowName', '3 Reconcile'), "
+        f"'Level', {reconcile_summary_level()}), "
+        "'Operation', 'NoOp'), "
+        f"'Message', {reconcile_summary_message()})"
+    )
