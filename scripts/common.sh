@@ -27,8 +27,19 @@ current_env() {
   pac org who 2>/dev/null | awk -F': +' '/Friendly Name/{print $2}'
 }
 
+# A prompt with nobody to answer it is not a "no". Run from a pipe, a background
+# job or CI, `read` sees EOF immediately and every caller took the decline branch
+# and exited 0 - an upgrade that silently declined itself and reported success.
+# Refusing loudly is the only honest answer; update.sh takes --yes for the
+# genuinely unattended case.
+require_a_terminal() {  # require_a_terminal <prompt>
+  [[ -t 0 ]] && return 0
+  die "cannot ask \"$1\" - no terminal is attached. Re-run this in a terminal, or use ./scripts/update.sh --yes if you meant to upgrade unattended."
+}
+
 confirm() {
-  local prompt="$1"
+  local prompt="$1" reply
+  require_a_terminal "$prompt"
   print -n -P "%F{yellow}?%f $prompt [y/N] "
   read -r reply
   [[ "$reply" == [yY]* ]]
@@ -83,6 +94,7 @@ ask_required() {  # keeps asking until non-empty
 # Two-stage confirmation for anything irreversible.
 confirm_destructive() {
   local prompt="$1" word="$2" reply
+  require_a_terminal "$prompt"
   print -P "%F{red}!!%f $prompt"
   print -n -P "%F{red}?%f Type %B$word%b to confirm: "
   read -r reply

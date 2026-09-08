@@ -14,19 +14,29 @@
 #   ./scripts/update.sh              upgrade to the locally built version
 #   ./scripts/update.sh --check      report versions only, change nothing
 #   ./scripts/update.sh --no-backup  skip the safety backup (not advised)
+#   ./scripts/update.sh --yes        answer the confirmation yes, for unattended runs
 source "${0:A:h}/common.sh"
 require_auth
 
 CHECK_ONLY=0
 DO_BACKUP=1
+ASSUME_YES=0
 while (( $# )); do
   case "$1" in
     --check) CHECK_ONLY=1; shift ;;
     --no-backup) DO_BACKUP=0; shift ;;
-    -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
+    -y|--yes) ASSUME_YES=1; shift ;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
 done
+
+# Local to update.sh on purpose: a shared opt-out would also disarm the teardown
+# guard, and nothing should be able to uninstall without a human present.
+confirm_or_assumed() {  # confirm_or_assumed <prompt>
+  (( ASSUME_YES )) && { info "$1 - assuming yes (--yes)"; return 0 }
+  confirm "$1"
+}
 
 print -P "%B O365GCal update %b"
 info "Environment: $(current_env)"
@@ -51,7 +61,7 @@ fi
 
 if [[ "$INSTALLED" == "$LOCAL" ]]; then
   warn "Already at $LOCAL."
-  confirm "Re-import the same version anyway?" || { info "Nothing changed."; exit 0 }
+  confirm_or_assumed "Re-import the same version anyway?" || { info "Nothing changed."; exit 0 }
 fi
 
 print ""
@@ -119,7 +129,7 @@ SETTINGS="$RECONCILED"
 ok "settings reconciled"
 
 print ""
-confirm "Proceed with the upgrade?" || { info "Aborted. Nothing changed."; exit 0 }
+confirm_or_assumed "Proceed with the upgrade?" || { info "Aborted. Nothing changed."; exit 0 }
 
 # Record which flows were running so they can be put back exactly as they were.
 info "Recording current flow states"

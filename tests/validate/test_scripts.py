@@ -318,3 +318,42 @@ def test_reconcile_prefers_the_live_value_over_a_default():
     )
     assert "Live wins" in text
     assert "carried" in text, "should report how many live values were preserved"
+
+
+def test_a_prompt_with_nobody_to_answer_it_is_not_a_no():
+    """Run without a terminal, `read` sees EOF and every confirm took the decline
+    branch and exited 0. An upgrade that silently declined itself and reported
+    success is the exact shape of a false negative, so confirm now refuses loudly."""
+    text = (ROOT / "scripts" / "common.sh").read_text()
+    assert "require_a_terminal" in text
+    assert "[[ -t 0 ]]" in text, "must actually test for a terminal"
+    for guard in ("confirm()", "confirm_destructive()"):
+        body = text[text.index(guard):]
+        body = body[:body.index("\n}")]
+        assert "require_a_terminal" in body, f"{guard} can still be answered by EOF"
+
+
+def test_only_update_can_be_answered_unattended():
+    """A shared opt-out would also disarm teardown's guard. Nothing should be able to
+    uninstall, restore over, or start mirroring without a human present."""
+    assert "--yes" in (ROOT / "scripts" / "update.sh").read_text()
+    assert "ASSUME_YES" not in (ROOT / "scripts" / "common.sh").read_text(), (
+        "the bypass must not live in the shared helper"
+    )
+    for name in ("teardown.sh", "restore.sh", "install.sh", "bootstrap.sh"):
+        text = (ROOT / "scripts" / name).read_text()
+        assert "ASSUME_YES" not in text, f"{name} must not be answerable unattended"
+
+
+def test_the_unattended_flag_is_documented_in_the_help_block():
+    """`--help` prints a fixed line range, so an added flag that falls outside it is
+    invisible to the only person looking for it."""
+    text = (ROOT / "scripts" / "update.sh").read_text()
+    lines = text.splitlines()
+    match = re.search(r"sed -n '2,(\d+)p'", text)
+    assert match, "update.sh --help must print its own header"
+    last = int(match.group(1))
+    header = "\n".join(lines[1:last])
+    assert "--yes" in header, "--yes is outside the range --help prints"
+    for flag in ("--check", "--no-backup"):
+        assert flag in header
