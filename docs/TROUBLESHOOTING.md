@@ -105,6 +105,33 @@ Go to **make.powerautomate.com → Connections** and reauthorise the one named.
 Google connections break most often: Google revokes refresh tokens on password change
 and after long inactivity. Nothing is lost — the next reconcile catches up.
 
+## "Your Google calendar is going stale" and 3 Reconcile is the flow named
+
+Check the reconciler's run history first:
+
+    ./scripts/run-flow.sh --runs 3
+
+If the newest run says **Running** and has been for longer than a few minutes, it has
+wedged. This is a platform fault, not a fault in the flow: Power Automate stops
+scheduling the next action mid-loop, with no failure and no error. Seen on 2026-09-08
+sitting for 84 minutes between two adjacent in-memory actions, with identical work
+either side of the gap and every other flow in the environment running normally.
+
+Since 1.2.0.0 the trigger allows one run at a time, so a stalled sweep is no longer
+joined by the next fifteen. The cost is that a wedged run blocks every later sweep,
+and mirroring stops until it is cleared:
+
+    ./scripts/unstick.sh              # list wedged runs, change nothing
+    ./scripts/unstick.sh --cancel     # clear them
+
+Cancelling loses no work. A reconcile is a full sweep and the next run redoes all of
+it; no calendar event is touched either way. The next scheduled run should finish in
+well under a minute.
+
+A run that took longer than its 15-minute schedule but did finish writes a **Warn**
+row to the `O365GCalLog` list naming its real duration, so a recurring slowdown is
+visible there without going to the portal.
+
 ## An hourly health report about a supporting flow
 
 The report says the reconciler is healthy and lists one supporting flow as past its

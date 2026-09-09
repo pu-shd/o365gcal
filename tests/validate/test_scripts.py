@@ -16,7 +16,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = sorted((ROOT / "scripts").glob("*.sh"))
 LIFECYCLE = ["bootstrap.sh", "status.sh", "update.sh", "teardown.sh",
-             "build.sh", "export.sh", "preflight.sh", "fetch-connector-swagger.sh"]
+             "build.sh", "export.sh", "preflight.sh", "fetch-connector-swagger.sh",
+             "unstick.sh"]
 
 
 def test_all_lifecycle_scripts_present():
@@ -135,7 +136,8 @@ def test_embedded_python_compiles(path):
             compile(block, f"{path.name}:<<{marker}", "exec")
 
 
-LIFECYCLE_SAFETY = ["update.sh", "teardown.sh", "restore.sh", "backup.sh"]
+LIFECYCLE_SAFETY = ["update.sh", "teardown.sh", "restore.sh", "backup.sh",
+                    "unstick.sh"]
 
 
 @pytest.mark.parametrize("script", LIFECYCLE_SAFETY)
@@ -152,7 +154,8 @@ def test_lifecycle_scripts_never_mutate_a_calendar(script):
         assert forbidden not in text, f"{script} performs a calendar operation: {forbidden}"
 
 
-@pytest.mark.parametrize("script", ["update.sh", "teardown.sh", "restore.sh"])
+@pytest.mark.parametrize("script", ["update.sh", "teardown.sh", "restore.sh",
+                                   "unstick.sh"])
 def test_lifecycle_scripts_state_the_calendar_guarantee(script):
     """A user about to remove things needs to know what survives, in the script's own
     output - not buried in documentation they will not read at that moment."""
@@ -357,3 +360,39 @@ def test_the_unattended_flag_is_documented_in_the_help_block():
     assert "--yes" in header, "--yes is outside the range --help prints"
     for flag in ("--check", "--no-backup"):
         assert flag in header
+
+
+def test_unstick_defaults_to_changing_nothing():
+    """It cancels runs, so seeing the list first is the default and --cancel is the
+    deliberate second step."""
+    text = (ROOT / "scripts" / "unstick.sh").read_text()
+    assert "DO_CANCEL=0" in text, "must default to a dry run"
+    cancel_at = text.index("/cancel?api-version")
+    guard_at = text.index("if (( ! DO_CANCEL ))")
+    assert guard_at < cancel_at, "the dry-run exit must precede any cancellation"
+
+
+def test_unstick_does_not_call_an_unreadable_history_empty():
+    """'nothing is wedged' is the reassuring answer, so it must never be a guess made
+    from a failed read."""
+    text = (ROOT / "scripts" / "unstick.sh").read_text()
+    assert "INCONCLUSIVE" in text
+    assert "could not read the run history" in text
+
+
+def test_unstick_only_cancels_runs_past_the_threshold():
+    """A healthy run mid-sweep must not be killed just for being in flight."""
+    text = (ROOT / "scripts" / "unstick.sh").read_text()
+    assert "OLDER_THAN=45" in text, "default should be flow 3's own staleness threshold"
+    assert "age >= threshold" in text, "age must gate what counts as wedged"
+
+
+def test_unstick_documents_every_flag_it_accepts():
+    """--help prints a fixed line range; a flag outside it is invisible."""
+    text = (ROOT / "scripts" / "unstick.sh").read_text()
+    lines = text.splitlines()
+    match = re.search(r"sed -n '2,(\d+)p'", text)
+    assert match, "unstick.sh --help must print its own header"
+    header = "\n".join(lines[1:int(match.group(1))])
+    for flag in ("--cancel", "--older-than", "--flow"):
+        assert flag in header, f"{flag} is outside the range --help prints"
