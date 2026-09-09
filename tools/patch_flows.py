@@ -68,21 +68,26 @@ def main() -> int:
         ["For_Each_Outlook_Event"]["actions"]
     )
 
-    loop["Compose_Key"]["inputs"] = x.correlation_key(
-        "item()?['iCalUId']", "item()?['startWithTimeZone']"
-    )
-    loop["Compose_Hidden"]["inputs"] = x.is_hidden("coalesce(item()?['sensitivity'], 'normal')")
-    loop["Compose_BodyFingerprint"]["inputs"] = x.body_fingerprint("coalesce(item()?['body'], '')")
-    loop["Compose_Subject"]["inputs"] = x.FLOW_FINGERPRINT_PARTS["effectiveSubject"]
-    loop["Compose_Fingerprint"]["inputs"] = x.flow_fingerprint()
-    loop["Compose_Description"]["inputs"] = x.flow_description()
+    scope = doc["properties"]["definition"]["actions"]["Try_Reconcile"]["actions"]
 
+    # Six Composes per event became one Select over the whole array. The expressions
+    # are the same ones, rewritten by standalone() to stop referencing each other.
+    scope["Select_Derived"]["inputs"]["select"] = {
+        name: "@" + expr for name, expr in x.derived_event().items()
+    }
+    scope["Select_Row_Pairs"]["inputs"]["select"] = "@" + x.ROW_PAIR
+    scope["Filter_Needs_Work"]["inputs"]["where"] = "@" + x.NEEDS_WORK
 
+    # The payload is built once per event in the Select; the loop adds only the two
+    # fields that come from the sync-map row.
     loop["Compose_Payload"] = {
         "runAfter": {"Decide": ["Succeeded"]},
         "type": "Compose",
-        "description": "The complete occurrence handed to child flow 2, which is the only writer.",
-        "inputs": payload_expression(),
+        "description": "The occurrence handed to child flow 2, which is the only writer, "
+                       "plus the two fields that come from the sync-map row.",
+        "inputs": ("@setProperty(setProperty(items('For_Each_Outlook_Event')?['payload'], "
+                   "'googleEventId', coalesce(outputs('Find_Map_Row')?['GoogleEventId'], '')), "
+                   "'mapItemId', string(coalesce(outputs('Find_Map_Row')?['Id'], '')))"),
     }
     loop["Apply_If_Needed"]["runAfter"] = {"Compose_Payload": ["Succeeded"]}
 
@@ -91,7 +96,7 @@ def main() -> int:
     loop["Decide"]["inputs"] = (
         "@if(equals(coalesce(outputs('Find_Map_Row')?['GoogleEventId'], ''), ''), 'Create', "
         "if(equals(coalesce(outputs('Find_Map_Row')?['ContentFingerprint'], ''), "
-        "outputs('Compose_Fingerprint')), 'NoOp', 'Update'))"
+        "items('For_Each_Outlook_Event')?['fingerprint']), 'NoOp', 'Update'))"
     )
     loop["Decide"]["description"] = describe(
         "No row or no Google id -> Create. Fingerprint moved -> Update. Otherwise NoOp, "
@@ -102,15 +107,13 @@ def main() -> int:
     # Decide yields only Create, Update or NoOp; deletions come from rows absent in
     # the read, handled after the loop. There is no delete branch here.
     loop["Apply_If_Needed"]["actions"]["Run_Apply_Event"]["inputs"]["body"] = {
-        "text": "@outputs('Compose_Key')",
+        "text": "@items('For_Each_Outlook_Event')?['key']",
         "text_1": "@outputs('Decide')",
         "text_2": "@{string(outputs('Compose_Payload'))}",
     }
 
     # Prefix bare expressions with @ where Logic Apps requires it.
-    for name in ("Compose_Key", "Compose_Hidden", "Compose_BodyFingerprint",
-                 "Compose_Subject", "Compose_Fingerprint", "Compose_Description",
-                 "Compose_Payload"):
+    for name in ("Compose_Payload",):
         value = loop[name]["inputs"]
         if isinstance(value, str) and not value.startswith("@"):
             loop[name]["inputs"] = "@" + value

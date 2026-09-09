@@ -158,6 +158,10 @@ class Evaluator:
             return self.ctx["parameters"][a[0]]
         if name == "variables":
             return self.ctx["variables"][a[0]]
+        if name == "body":
+            # An action's output body, addressed the way a flow addresses it. Needed to
+            # evaluate a filter that reads a previous Select's result.
+            return self.ctx.get("body", {})[a[0]]
         if name == "outputs":
             return self.ctx.get("outputs", {})[a[0]]
         if name == "utcNow":

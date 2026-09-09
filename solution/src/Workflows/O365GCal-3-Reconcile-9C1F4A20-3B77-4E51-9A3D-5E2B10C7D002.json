@@ -534,75 +534,92 @@
                 "value": "@body('Filter_Active_Rows')"
               }
             },
-            "For_Each_Outlook_Event": {
+            "Select_Derived": {
               "runAfter": {
                 "For_Each_Verify": [
                   "Succeeded"
                 ]
               },
+              "type": "Select",
+              "description": "Key, fingerprint, subject and payload for every event, in one action instead of six per event. Pure functions of the event, so nothing here needs the sync map.",
+              "inputs": {
+                "from": "@variables('OutlookEvents')",
+                "select": {
+                  "key": "@concat(coalesce(item()?['iCalUId'], ''), '|', formatDateTime(item()?['startWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'))",
+                  "fingerprint": "@concat(if(and(equals(parameters('HidePrivateEventDetails (o3gc_HidePrivateEventDetails)'), true), contains(createArray('private','confidential'), coalesce(item()?['sensitivity'], 'normal'))), 'Busy', trim(concat(if(equals(toLower(trim(coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), 'none'))), 'none'), '', coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), 'none')), coalesce(item()?['subject'], '')))), decodeUriComponent('%1F'), formatDateTime(item()?['startWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'), decodeUriComponent('%1F'), formatDateTime(item()?['endWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'), decodeUriComponent('%1F'), if(coalesce(item()?['isAllDay'], false), '1', '0'), decodeUriComponent('%1F'), if(and(equals(parameters('HidePrivateEventDetails (o3gc_HidePrivateEventDetails)'), true), contains(createArray('private','confidential'), coalesce(item()?['sensitivity'], 'normal'))), '', trim(coalesce(item()?['location'], ''))), decodeUriComponent('%1F'), if(and(equals(parameters('HidePrivateEventDetails (o3gc_HidePrivateEventDetails)'), true), contains(createArray('private','confidential'), coalesce(item()?['sensitivity'], 'normal'))), '', concat(string(length(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' ')))), ':', substring(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' ')), 0, min(256, length(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' '))))))), decodeUriComponent('%1F'), toLower(trim(coalesce(item()?['showAs'], 'busy'))), decodeUriComponent('%1F'), coalesce(item()?['sensitivity'], 'normal'), decodeUriComponent('%1F'), if(and(equals(parameters('HidePrivateEventDetails (o3gc_HidePrivateEventDetails)'), true), contains(createArray('private','confidential'), coalesce(item()?['sensitivity'], 'normal'))), '', toLower(concat(trim(coalesce(item()?['requiredAttendees'], '')), ';', trim(coalesce(item()?['optionalAttendees'], ''))))), decodeUriComponent('%1F'), if(and(equals(parameters('HidePrivateEventDetails (o3gc_HidePrivateEventDetails)'), true), contains(createArray('private','confidential'), coalesce(item()?['sensitivity'], 'normal'))), '', toLower(trim(coalesce(item()?['organizer'], '')))), decodeUriComponent('%1F'), coalesce(item()?['responseType'], 'none'), decodeUriComponent('%1F'), if(parameters('HidePrivateEventDetails (o3gc_HidePrivateEventDetails)'), '1', '0'))",
+                  "subject": "@if(and(equals(parameters('HidePrivateEventDetails (o3gc_HidePrivateEventDetails)'), true), contains(createArray('private','confidential'), coalesce(item()?['sensitivity'], 'normal'))), 'Busy', trim(concat(if(equals(toLower(trim(coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), 'none'))), 'none'), '', coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), 'none')), coalesce(item()?['subject'], ''))))",
+                  "startsAt": "@item()?['startWithTimeZone']",
+                  "payload": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'fingerprint', concat(if(and(equals(parameters('HidePrivateEventDetails (o3gc_HidePrivateEventDetails)'), true), contains(createArray('private','confidential'), coalesce(item()?['sensitivity'], 'normal'))), 'Busy', trim(concat(if(equals(toLower(trim(coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), 'none'))), 'none'), '', coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), 'none')), coalesce(item()?['subject'], '')))), decodeUriComponent('%1F'), formatDateTime(item()?['startWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'), decodeUriComponent('%1F'), formatDateTime(item()?['endWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'), decodeUriComponent('%1F'), if(coalesce(item()?['isAllDay'], false), '1', '0'), decodeUriComponent('%1F'), if(and(equals(parameters('HidePrivateEventDetails (o3gc_HidePrivateEventDetails)'), true), contains(createArray('private','confidential'), coalesce(item()?['sensitivity'], 'normal'))), '', trim(coalesce(item()?['location'], ''))), decodeUriComponent('%1F'), if(and(equals(parameters('HidePrivateEventDetails (o3gc_HidePrivateEventDetails)'), true), contains(createArray('private','confidential'), coalesce(item()?['sensitivity'], 'normal'))), '', concat(string(length(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' ')))), ':', substring(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' ')), 0, min(256, length(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' '))))))), decodeUriComponent('%1F'), toLower(trim(coalesce(item()?['showAs'], 'busy'))), decodeUriComponent('%1F'), coalesce(item()?['sensitivity'], 'normal'), decodeUriComponent('%1F'), if(and(equals(parameters('HidePrivateEventDetails (o3gc_HidePrivateEventDetails)'), true), contains(createArray('private','confidential'), coalesce(item()?['sensitivity'], 'normal'))), '', toLower(concat(trim(coalesce(item()?['requiredAttendees'], '')), ';', trim(coalesce(item()?['optionalAttendees'], ''))))), decodeUriComponent('%1F'), if(and(equals(parameters('HidePrivateEventDetails (o3gc_HidePrivateEventDetails)'), true), contains(createArray('private','confidential'), coalesce(item()?['sensitivity'], 'normal'))), '', toLower(trim(coalesce(item()?['organizer'], '')))), decodeUriComponent('%1F'), coalesce(item()?['responseType'], 'none'), decodeUriComponent('%1F'), if(parameters('HidePrivateEventDetails (o3gc_HidePrivateEventDetails)'), '1', '0'))), 'summary', if(and(equals(parameters('HidePrivateEventDetails (o3gc_HidePrivateEventDetails)'), true), contains(createArray('private','confidential'), coalesce(item()?['sensitivity'], 'normal'))), 'Busy', trim(concat(if(equals(toLower(trim(coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), 'none'))), 'none'), '', coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), 'none')), coalesce(item()?['subject'], ''))))), 'start', item()?['startWithTimeZone']), 'end', item()?['endWithTimeZone']), 'description', if(and(equals(parameters('HidePrivateEventDetails (o3gc_HidePrivateEventDetails)'), true), contains(createArray('private','confidential'), coalesce(item()?['sensitivity'], 'normal'))), concat('──────────────────────────────────', decodeUriComponent('%0A'), 'Mirrored from Outlook · edits here will be overwritten', decodeUriComponent('%0A'), 'Details hidden (private event, busy-only mode)', decodeUriComponent('%0A'), 'o365gcal-key: ', concat(coalesce(item()?['iCalUId'], ''), '|', formatDateTime(item()?['startWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'))), concat(if(coalesce(item()?['isHtml'], true), if(empty(coalesce(item()?['body'], '')), '', '(HTML body — open the Outlook link below to read it)'), substring(coalesce(item()?['body'], ''), 0, min(1000, length(coalesce(item()?['body'], ''))))), decodeUriComponent('%0A'), decodeUriComponent('%0A'), '──────────────────────────────────', decodeUriComponent('%0A'), 'Mirrored from Outlook · edits here will be overwritten', decodeUriComponent('%0A'), 'Organizer:     ', coalesce(item()?['organizer'], ''), decodeUriComponent('%0A'), 'Your response: ', if(equals(coalesce(item()?['responseType'], 'none'), 'notResponded'), '⚠ Not responded', if(equals(coalesce(item()?['responseType'], 'none'), 'tentativelyAccepted'), '⚠ Tentative — not confirmed', coalesce(item()?['responseType'], 'none'))), decodeUriComponent('%0A'), 'Required:      ', replace(coalesce(item()?['requiredAttendees'], ''), ';', ','), decodeUriComponent('%0A'), 'Optional:      ', replace(coalesce(item()?['optionalAttendees'], ''), ';', ','), decodeUriComponent('%0A'), 'Respond in Outlook: ', coalesce(item()?['webLink'], ''), decodeUriComponent('%0A'), 'o365gcal-key: ', concat(coalesce(item()?['iCalUId'], ''), '|', formatDateTime(item()?['startWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'))))), 'location', if(and(equals(parameters('HidePrivateEventDetails (o3gc_HidePrivateEventDetails)'), true), contains(createArray('private','confidential'), coalesce(item()?['sensitivity'], 'normal'))), '', coalesce(item()?['location'], ''))), 'isAllDay', coalesce(item()?['isAllDay'], false)), 'outlookEventId', coalesce(item()?['id'], '')), 'outlookICalUId', coalesce(item()?['iCalUId'], '')), 'seriesMasterId', coalesce(item()?['seriesMasterId'], '')), 'myResponse', coalesce(item()?['responseType'], 'none'))"
+                }
+              }
+            },
+            "Select_Seen_Keys": {
+              "runAfter": {
+                "Select_Derived": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Select",
+              "description": "Every key seen this run - taken from the derived array so it cannot drift from it. Deletion is inferred from absence here.",
+              "inputs": {
+                "from": "@body('Select_Derived')",
+                "select": "@item()?['key']"
+              }
+            },
+            "Store_Seen_Keys": {
+              "runAfter": {
+                "Select_Seen_Keys": [
+                  "Succeeded"
+                ]
+              },
+              "type": "SetVariable",
+              "description": "Replaces an append per event; Filter_Absent_Rows reads this.",
+              "inputs": {
+                "name": "SeenKeys",
+                "value": "@body('Select_Seen_Keys')"
+              }
+            },
+            "Select_Row_Pairs": {
+              "runAfter": {
+                "Store_Seen_Keys": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Select",
+              "description": "Each mapped occurrence as key|fingerprint. Read from MapRows, the same source the per-event lookup uses, so the filter below and the decision it skips cannot disagree.",
+              "inputs": {
+                "from": "@variables('MapRows')",
+                "select": "@concat(coalesce(item()?['Title'], ''), '|', coalesce(item()?['ContentFingerprint'], ''))"
+              }
+            },
+            "Filter_Needs_Work": {
+              "runAfter": {
+                "Select_Row_Pairs": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Query",
+              "description": "Events whose key and fingerprint are already mapped are unchanged and drop out here. The loop below used to spend twelve actions per event reaching that same conclusion.",
+              "inputs": {
+                "from": "@body('Select_Derived')",
+                "where": "@not(contains(body('Select_Row_Pairs'), concat(item()?['key'], '|', item()?['fingerprint'])))"
+              }
+            },
+            "For_Each_Outlook_Event": {
+              "runAfter": {
+                "Filter_Needs_Work": [
+                  "Succeeded"
+                ]
+              },
               "type": "Foreach",
-              "description": "Sequential on purpose: concurrent branches would race the Applied counter and blow through the Google throttle cap.",
-              "foreach": "@variables('OutlookEvents')",
+              "description": "Only events that need a decision reach this loop, so on a calendar where nothing changed it does not run at all. Each iteration still costs a map-row lookup and a child-flow call.",
+              "foreach": "@body('Filter_Needs_Work')",
               "runtimeConfiguration": {
                 "concurrency": {
                   "repetitions": 1
                 }
               },
               "actions": {
-                "Compose_Key": {
-                  "runAfter": {},
-                  "type": "Compose",
-                  "description": "Keyed on iCalUId, not the Graph event id: Outlook rewrites the id when an invitation is accepted, which would otherwise mirror the meeting twice.",
-                  "inputs": "@concat(item()?['iCalUId'], '|', formatDateTime(item()?['startWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'))"
-                },
-                "Compose_Hidden": {
-                  "runAfter": {
-                    "Compose_Key": [
-                      "Succeeded"
-                    ]
-                  },
-                  "type": "Compose",
-                  "inputs": "@and(equals(parameters('HidePrivateEventDetails (o3gc_HidePrivateEventDetails)'), true), contains(createArray('private','confidential'), coalesce(item()?['sensitivity'], 'normal')))"
-                },
-                "Compose_BodyFingerprint": {
-                  "runAfter": {
-                    "Compose_Hidden": [
-                      "Succeeded"
-                    ]
-                  },
-                  "type": "Compose",
-                  "description": "Graph's bodyPreview is already plain text; the expression language has no regex, so only line breaks and tabs are flattened. Matches o365gcal.normalize.body_fingerprint exactly.",
-                  "inputs": "@concat(string(length(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' ')))), ':', substring(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' ')), 0, min(256, length(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' '))))))"
-                },
-                "Compose_Subject": {
-                  "runAfter": {
-                    "Compose_BodyFingerprint": [
-                      "Succeeded"
-                    ]
-                  },
-                  "type": "Compose",
-                  "inputs": "@if(outputs('Compose_Hidden'), 'Busy', trim(concat(if(equals(toLower(trim(coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), 'none'))), 'none'), '', coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), 'none')), coalesce(item()?['subject'], ''))))"
-                },
-                "Compose_Fingerprint": {
-                  "runAfter": {
-                    "Compose_Subject": [
-                      "Succeeded"
-                    ]
-                  },
-                  "type": "Compose",
-                  "description": "Fourteen normalised fields joined by US (0x1f), a character Outlook content cannot contain. Field order must match o365gcal.normalize.fingerprint; tests/validate/test_expression_parity.py enforces it. Deliberately excludes lastModifiedDateTime, which",
-                  "inputs": "@concat(if(outputs('Compose_Hidden'), 'Busy', trim(concat(if(equals(toLower(trim(coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), 'none'))), 'none'), '', coalesce(parameters('TitlePrefix (o3gc_TitlePrefix)'), 'none')), coalesce(item()?['subject'], '')))), decodeUriComponent('%1F'), formatDateTime(item()?['startWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'), decodeUriComponent('%1F'), formatDateTime(item()?['endWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'), decodeUriComponent('%1F'), if(coalesce(item()?['isAllDay'], false), '1', '0'), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', trim(coalesce(item()?['location'], ''))), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', concat(string(length(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' ')))), ':', substring(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' ')), 0, min(256, length(trim(replace(replace(replace(coalesce(item()?['body'], ''), decodeUriComponent('%0A'), ' '), decodeUriComponent('%0D'), ' '), decodeUriComponent('%09'), ' '))))))), decodeUriComponent('%1F'), toLower(trim(coalesce(item()?['showAs'], 'busy'))), decodeUriComponent('%1F'), coalesce(item()?['sensitivity'], 'normal'), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', toLower(concat(trim(coalesce(item()?['requiredAttendees'], '')), ';', trim(coalesce(item()?['optionalAttendees'], ''))))), decodeUriComponent('%1F'), if(outputs('Compose_Hidden'), '', toLower(trim(coalesce(item()?['organizer'], '')))), decodeUriComponent('%1F'), coalesce(item()?['responseType'], 'none'), decodeUriComponent('%1F'), if(parameters('HidePrivateEventDetails (o3gc_HidePrivateEventDetails)'), '1', '0'))"
-                },
-                "Compose_Description": {
-                  "runAfter": {
-                    "Compose_Fingerprint": [
-                      "Succeeded"
-                    ]
-                  },
-                  "type": "Compose",
-                  "description": "Attendees are rendered as text, not attached as real Google attendees: a non-empty Google attendee list makes Google email an invitation to every Outlook attendee from the user's own account.",
-                  "inputs": "@if(outputs('Compose_Hidden'), concat('──────────────────────────────────', decodeUriComponent('%0A'), 'Mirrored from Outlook · edits here will be overwritten', decodeUriComponent('%0A'), 'Details hidden (private event, busy-only mode)', decodeUriComponent('%0A'), 'o365gcal-key: ', outputs('Compose_Key')), concat(if(coalesce(item()?['isHtml'], true), if(empty(coalesce(item()?['body'], '')), '', '(HTML body — open the Outlook link below to read it)'), substring(coalesce(item()?['body'], ''), 0, min(1000, length(coalesce(item()?['body'], ''))))), decodeUriComponent('%0A'), decodeUriComponent('%0A'), '──────────────────────────────────', decodeUriComponent('%0A'), 'Mirrored from Outlook · edits here will be overwritten', decodeUriComponent('%0A'), 'Organizer:     ', coalesce(item()?['organizer'], ''), decodeUriComponent('%0A'), 'Your response: ', if(equals(coalesce(item()?['responseType'], 'none'), 'notResponded'), '⚠ Not responded', if(equals(coalesce(item()?['responseType'], 'none'), 'tentativelyAccepted'), '⚠ Tentative — not confirmed', coalesce(item()?['responseType'], 'none'))), decodeUriComponent('%0A'), 'Required:      ', replace(coalesce(item()?['requiredAttendees'], ''), ';', ','), decodeUriComponent('%0A'), 'Optional:      ', replace(coalesce(item()?['optionalAttendees'], ''), ';', ','), decodeUriComponent('%0A'), 'Respond in Outlook: ', coalesce(item()?['webLink'], ''), decodeUriComponent('%0A'), 'o365gcal-key: ', outputs('Compose_Key')))"
-                },
                 "Find_Map_Row": {
                   "runAfter": {
                     "Filter_Map_Row": [
@@ -612,27 +629,15 @@
                   "type": "Compose",
                   "inputs": "@first(body('Filter_Map_Row'))"
                 },
-                "Record_Seen": {
+                "Decide": {
                   "runAfter": {
                     "Find_Map_Row": [
                       "Succeeded"
                     ]
                   },
-                  "type": "AppendToArrayVariable",
-                  "inputs": {
-                    "name": "SeenKeys",
-                    "value": "@outputs('Compose_Key')"
-                  }
-                },
-                "Decide": {
-                  "runAfter": {
-                    "Record_Seen": [
-                      "Succeeded"
-                    ]
-                  },
                   "type": "Compose",
                   "description": "No row or no Google id -> Create. Fingerprint moved -> Update. Otherwise NoOp, the common case, costing zero Google calls. Deletion is decided after the loop from rows absent in this read: the calendar view has no cancellation flag.",
-                  "inputs": "@if(equals(coalesce(outputs('Find_Map_Row')?['GoogleEventId'], ''), ''), 'Create', if(equals(coalesce(outputs('Find_Map_Row')?['ContentFingerprint'], ''), outputs('Compose_Fingerprint')), 'NoOp', 'Update'))"
+                  "inputs": "@if(equals(coalesce(outputs('Find_Map_Row')?['GoogleEventId'], ''), ''), 'Create', if(equals(coalesce(outputs('Find_Map_Row')?['ContentFingerprint'], ''), items('For_Each_Outlook_Event')?['fingerprint']), 'NoOp', 'Update'))"
                 },
                 "Apply_If_Needed": {
                   "runAfter": {
@@ -676,7 +681,7 @@
                           "workflowReferenceName": "9C1F4A20-3B77-4E51-9A3D-5E2B10C7D001"
                         },
                         "body": {
-                          "text": "@outputs('Compose_Key')",
+                          "text": "@items('For_Each_Outlook_Event')?['key']",
                           "text_1": "@outputs('Decide')",
                           "text_2": "@{string(outputs('Compose_Payload'))}"
                         }
@@ -692,7 +697,7 @@
                       "description": "Counts a failed apply too: it consumed budget and must not be retried into the same throttle window.",
                       "inputs": {
                         "name": "Applied",
-                        "value": "@outputs('Compose_Key')"
+                        "value": "@items('For_Each_Outlook_Event')?['key']"
                       }
                     },
                     "Record_Change": {
@@ -707,8 +712,8 @@
                         "name": "Changes",
                         "value": {
                           "operation": "@outputs('Decide')",
-                          "subject": "@outputs('Compose_Subject')",
-                          "startsAt": "@item()?['startWithTimeZone']"
+                          "subject": "@items('For_Each_Outlook_Event')?['subject']",
+                          "startsAt": "@items('For_Each_Outlook_Event')?['startsAt']"
                         }
                       }
                     },
@@ -780,20 +785,16 @@
                     ]
                   },
                   "type": "Compose",
-                  "description": "The complete occurrence handed to child flow 2, which is the only writer.",
-                  "inputs": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'googleEventId', coalesce(outputs('Find_Map_Row')?['GoogleEventId'], '')), 'mapItemId', string(coalesce(outputs('Find_Map_Row')?['Id'], ''))), 'fingerprint', outputs('Compose_Fingerprint')), 'summary', outputs('Compose_Subject')), 'start', item()?['startWithTimeZone']), 'end', item()?['endWithTimeZone']), 'description', outputs('Compose_Description')), 'location', if(outputs('Compose_Hidden'), '', coalesce(item()?['location'], ''))), 'isAllDay', coalesce(item()?['isAllDay'], false)), 'outlookEventId', coalesce(item()?['id'], '')), 'outlookICalUId', coalesce(item()?['iCalUId'], '')), 'seriesMasterId', coalesce(item()?['seriesMasterId'], '')), 'myResponse', coalesce(item()?['responseType'], 'none'))"
+                  "description": "The occurrence handed to child flow 2, which is the only writer, plus the two fields that come from the sync-map row.",
+                  "inputs": "@setProperty(setProperty(items('For_Each_Outlook_Event')?['payload'], 'googleEventId', coalesce(outputs('Find_Map_Row')?['GoogleEventId'], '')), 'mapItemId', string(coalesce(outputs('Find_Map_Row')?['Id'], '')))"
                 },
                 "Filter_Map_Row": {
                   "type": "Query",
                   "inputs": {
                     "from": "@variables('MapRows')",
-                    "where": "@equals(item()?['Title'], outputs('Compose_Key'))"
+                    "where": "@equals(item()?['Title'], items('For_Each_Outlook_Event')?['key'])"
                   },
-                  "runAfter": {
-                    "Compose_Description": [
-                      "Succeeded"
-                    ]
-                  }
+                  "runAfter": {}
                 }
               }
             },

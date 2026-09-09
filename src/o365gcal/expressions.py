@@ -321,3 +321,89 @@ def reconcile_summary_body() -> str:
         "'Operation', 'NoOp'), "
         f"'Message', {reconcile_summary_message()})"
     )
+
+
+# ---------------------------------------------------------------------------
+# The per-event pipeline
+#
+# The reconciler computed six Compose actions per event and then looped over every
+# event whether or not it needed anything: twelve action executions times the size of
+# the calendar, for a run whose usual answer is "nothing changed". Each of those is a
+# point at which the platform can stop scheduling, which is how a 2026-09-08 sweep
+# stalled for 84 minutes between two adjacent Composes.
+#
+# The Compose chain existed only because each step referenced the one before. Just two
+# of those references survive in the expressions themselves, so substituting them
+# yields expressions that stand alone - evaluable for the whole array in a single
+# Select, and then filterable down to the events that actually need work.
+
+#: is_hidden, expressed against the event rather than a previous action's output.
+HIDDEN_INLINE = "and(equals({p}, true), contains(createArray('private','confidential'), {s}))".format(
+    p=env("HidePrivateEventDetails"), s="coalesce(item()?['sensitivity'], 'normal')"
+)
+
+#: The correlation key, likewise.
+KEY_INLINE = "concat(coalesce(item()?['iCalUId'], ''), '|', {})".format(
+    iso_utc("item()?['startWithTimeZone']")
+)
+
+
+def standalone(expr: str) -> str:
+    """Rewrite an expression that leaned on the Compose chain to stand on its own."""
+    return expr.replace(HIDDEN, HIDDEN_INLINE).replace("outputs('Compose_Key')", KEY_INLINE)
+
+
+def derived_payload() -> str:
+    """Everything flow 2 needs that depends only on the Outlook event.
+
+    googleEventId and mapItemId are not here: they come from the sync-map row, which is
+    looked up in the loop, and only for the few events that turn out to need work.
+    """
+    fields = [
+        ("fingerprint", standalone(flow_fingerprint())),
+        ("summary", standalone(FLOW_FINGERPRINT_PARTS["effectiveSubject"])),
+        ("start", "item()?['startWithTimeZone']"),
+        ("end", "item()?['endWithTimeZone']"),
+        ("description", standalone(flow_description())),
+        ("location", f"if({HIDDEN_INLINE}, '', coalesce(item()?['location'], ''))"),
+        ("isAllDay", "coalesce(item()?['isAllDay'], false)"),
+        ("outlookEventId", "coalesce(item()?['id'], '')"),
+        ("outlookICalUId", "coalesce(item()?['iCalUId'], '')"),
+        ("seriesMasterId", "coalesce(item()?['seriesMasterId'], '')"),
+        ("myResponse", "coalesce(item()?['responseType'], 'none')"),
+    ]
+    expr = "json('{}')"
+    for name, value in fields:
+        expr = f"setProperty({expr}, '{name}', {value})"
+    return expr
+
+
+def derived_event() -> dict[str, str]:
+    """One object per Outlook event, computed for the whole array in a single Select.
+
+    `startsAt` is carried because the change notification reports it and the loop no
+    longer has the raw event to hand.
+    """
+    return {
+        "key": KEY_INLINE,
+        "fingerprint": standalone(flow_fingerprint()),
+        "subject": standalone(FLOW_FINGERPRINT_PARTS["effectiveSubject"]),
+        "startsAt": "item()?['startWithTimeZone']",
+        "payload": derived_payload(),
+    }
+
+
+#: An active map row reduced to the pair that decides whether its event is unchanged.
+ROW_PAIR = ("concat(coalesce(item()?['Title'], ''), '|', "
+            "coalesce(item()?['ContentFingerprint'], ''))")
+
+
+#: True when an event still needs a decision. An event whose key and fingerprint
+#: together already appear among the active rows is a no-op, and skipping it is exactly
+#: what the loop used to spend twelve actions concluding.
+#:
+#: Every other case survives the filter and is decided as before: no row at all, a row
+#: whose fingerprint has moved, and a row whose fingerprint was deliberately cleared by
+#: the verification sweep so the event would be rebuilt.
+NEEDS_WORK = ("not(contains(body('Select_Row_Pairs'), "
+              "concat(item()?['key'], '|', item()?['fingerprint'])))")

@@ -10,7 +10,9 @@ from datetime import datetime, timezone
 import pytest
 from o365gcal import expressions as x
 from o365gcal.model import Config, ResponseType
-from o365gcal.normalize import body_fingerprint, correlation_key, iso_utc
+from o365gcal.diff import build_plan
+from o365gcal.normalize import body_fingerprint, content_hash, correlation_key, iso_utc
+from conftest import make_event, make_row
 from wdl import Evaluator, WdlError
 
 NOW = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
@@ -274,3 +276,104 @@ def test_full_fingerprint_parity_when_hiding_private_events(hide, config):
     assert _eval_flow_fingerprint(e, config) == fingerprint(e, config)
 
 
+
+
+# --- the hoisted per-event pipeline ----------------------------------------
+#
+# The six Composes per event became one Select over the whole array, and the loop now
+# runs only for events that need a decision. Both changes are only safe if the
+# standalone expressions compute what the Compose chain computed, and if the filter
+# selects exactly the events the engine would have acted on.
+
+
+def _standalone_eval(expr, event, cfg, rows=None):
+    """Evaluate an expression with no Compose chain behind it - only the event."""
+    params = {
+        f"{k} (o3gc_{k})": v
+        for k, v in {
+            "TitlePrefix": cfg.title_prefix,
+            "HidePrivateEventDetails": cfg.hide_private_event_details,
+        }.items()
+    }
+    # _flow_item predates the key being computed from the event itself, so the
+    # identity fields the standalone expressions read are added here.
+    item = dict(_flow_item(event), **{
+        "iCalUId": event.ical_uid,
+        "id": event.event_id,
+        "seriesMasterId": "",
+    })
+    return Evaluator({
+        "item": item,
+        "parameters": params,
+        "variables": {},
+        "utcNow": NOW,
+        "outputs": {},
+        "body": {"Select_Row_Pairs": rows or []},
+    }).eval(expr)
+
+
+@pytest.mark.parametrize("hide", [False, True], ids=["visible", "busy-only"])
+def test_standalone_fingerprint_matches_the_compose_chain(hide, config):
+    """Same value, one action instead of six - or the hoist silently rewrites every
+    event on the next run."""
+    config.hide_private_event_details = hide
+    for subject in ("Standup", "Faculty Meeting"):
+        event = make_event(subject, body_html="<p>Agenda: budget</p>", location="Room B")
+        chained = _eval_flow_fingerprint(event, config)
+        hoisted = _standalone_eval(x.standalone(x.flow_fingerprint()), event, config)
+        assert hoisted == chained, f"{subject} under hide={hide}"
+
+
+def test_standalone_key_matches_the_engine(config):
+    event = make_event("Standup")
+    got = _standalone_eval(x.KEY_INLINE, event, config)
+    assert got == correlation_key(event.ical_uid, event.start_utc)
+
+
+def _pairs_for(rows):
+    """The Select_Row_Pairs result, evaluated rather than assumed."""
+    out = []
+    for row in rows:
+        item = {"Title": row.correlation_key, "ContentFingerprint": row.content_hash}
+        out.append(Evaluator({"item": item, "utcNow": NOW}).eval(x.ROW_PAIR))
+    return out
+
+
+@pytest.mark.parametrize(
+    "label,stale,drop_row",
+    [("unchanged", False, False),
+     ("fingerprint moved", True, False),
+     ("never mirrored", False, True)],
+)
+def test_prefilter_selects_exactly_what_the_engine_would_act_on(label, stale, drop_row, config):
+    """The loop used to spend twelve actions per event concluding 'nothing to do'.
+    Skipping that is only correct if the filter agrees with the engine about which
+    events need a decision."""
+    event = make_event("Standup")
+    rows = [] if drop_row else [make_row(event, config, stale=stale)]
+
+    needs_work = _standalone_eval(
+        x.NEEDS_WORK.replace("item()?['key']", f"'{correlation_key(event.ical_uid, event.start_utc)}'")
+                    .replace("item()?['fingerprint']", f"'{content_hash(event, config)}'"),
+        event, config, rows=_pairs_for(rows),
+    )
+
+    plan = build_plan([event], rows, config, NOW)
+    engine_acts = bool(plan.creates or plan.updates)
+    assert needs_work == engine_acts, (
+        f"{label}: filter says needs_work={needs_work}, engine says {engine_acts}"
+    )
+
+
+def test_the_verification_sweep_still_forces_a_rebuild(config):
+    """Verification clears a row's fingerprint so the event is rebuilt. That relies on
+    the cleared value failing to match, which is now the filter's job."""
+    event = make_event("Standup")
+    row = make_row(event, config)
+    row.content_hash = ""
+    needs_work = _standalone_eval(
+        x.NEEDS_WORK.replace("item()?['key']", f"'{correlation_key(event.ical_uid, event.start_utc)}'")
+                    .replace("item()?['fingerprint']", f"'{content_hash(event, config)}'"),
+        event, config, rows=_pairs_for([row]),
+    )
+    assert needs_work, "a cleared fingerprint must not read as unchanged"

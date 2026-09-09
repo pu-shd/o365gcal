@@ -852,9 +852,10 @@ def test_attendee_information_still_reaches_the_description():
     attendee lists and the RSVP state are what 'visibility of event invitations'
     means, and they belong in the description."""
     path = next(p for p in WORKFLOWS if "3-Reconcile" in p.name)
-    loop = (definition(path)["actions"]["Try_Reconcile"]["actions"]
-            ["For_Each_Outlook_Event"]["actions"])
-    desc = loop["Compose_Description"]["inputs"]
+    # The description moved out of a per-event Compose and into the payload built for
+    # every event at once; what it has to contain is unchanged.
+    desc = (definition(path)["actions"]["Try_Reconcile"]["actions"]
+            ["Select_Derived"]["inputs"]["select"]["payload"])
     for field in ("organizer", "requiredAttendees", "optionalAttendees", "responseType"):
         assert f"item()?['{field}']" in desc, f"description must include {field}"
     assert "Respond in Outlook" in desc
@@ -1385,3 +1386,63 @@ def test_a_wedged_sweep_is_reported_differently_from_a_silent_flow():
         "a flow that simply is not running must not be told to cancel a run"
     )
     assert "unstick.sh" not in silent
+
+
+def _reconcile_scope():
+    return definition(_reconcile())["actions"]["Try_Reconcile"]["actions"]
+
+
+def test_seen_keys_still_covers_every_event_not_only_the_changed_ones():
+    """The dangerous way to get this refactor wrong.
+
+    Deletion is inferred from absence: a mapped occurrence whose key is not in SeenKeys
+    is treated as cancelled. If SeenKeys were built from the filtered array, every
+    unchanged event would look absent and the reconciler would propose deleting the
+    entire mirror on its next run. The circuit breaker would catch a mass deletion, but
+    it must never be asked to."""
+    scope = _reconcile_scope()
+    assert scope["Select_Seen_Keys"]["inputs"]["from"] == "@body('Select_Derived')", (
+        "SeenKeys must come from every event, never from Filter_Needs_Work"
+    )
+    assert scope["Select_Derived"]["inputs"]["from"] == "@variables('OutlookEvents')"
+    assert scope["Store_Seen_Keys"]["inputs"]["value"] == "@body('Select_Seen_Keys')"
+
+
+def test_the_loop_runs_only_for_events_that_need_a_decision():
+    scope = _reconcile_scope()
+    loop = scope["For_Each_Outlook_Event"]
+    assert loop["foreach"] == "@body('Filter_Needs_Work')", (
+        "iterating every event is the cost this change exists to remove"
+    )
+    assert scope["Filter_Needs_Work"]["inputs"]["from"] == "@body('Select_Derived')"
+
+
+def test_the_prefilter_reads_the_same_rows_as_the_decision_it_skips():
+    """Filtering on one source and deciding from another would let the two disagree,
+    and the disagreement would silently skip an event that needed work."""
+    scope = _reconcile_scope()
+    pairs_from = scope["Select_Row_Pairs"]["inputs"]["from"]
+    lookup_from = scope["For_Each_Outlook_Event"]["actions"]["Filter_Map_Row"]["inputs"]["from"]
+    assert pairs_from == lookup_from == "@variables('MapRows')"
+
+
+def test_the_per_event_compose_chain_is_gone():
+    """Each action in the loop is a point at which the platform can stop scheduling;
+    on 2026-09-08 one sweep stalled for 84 minutes between two of these."""
+    loop = _reconcile_scope()["For_Each_Outlook_Event"]["actions"]
+    for gone in ("Compose_Key", "Compose_Hidden", "Compose_BodyFingerprint",
+                 "Compose_Subject", "Compose_Fingerprint", "Compose_Description",
+                 "Record_Seen"):
+        assert gone not in loop, f"{gone} still runs once per event"
+    assert len(loop) <= 5, f"loop body has grown back to {len(loop)} actions: {sorted(loop)}"
+
+
+def test_the_derived_array_is_the_canonical_expression_set():
+    from o365gcal.expressions import NEEDS_WORK, ROW_PAIR, derived_event
+
+    scope = _reconcile_scope()
+    assert scope["Select_Derived"]["inputs"]["select"] == {
+        name: "@" + expr for name, expr in derived_event().items()
+    }, "run tools/patch_flows.py"
+    assert scope["Select_Row_Pairs"]["inputs"]["select"] == "@" + ROW_PAIR
+    assert scope["Filter_Needs_Work"]["inputs"]["where"] == "@" + NEEDS_WORK
