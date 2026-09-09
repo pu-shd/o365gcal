@@ -144,7 +144,7 @@
             "parameters": {
               "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
               "parameters/method": "GET",
-              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items?$select=Id,Title,LastSuccessUtc,LastRunStatus,ConsecutiveFailures,StaleAfterMinutes,AffectsSync&$top=100')}",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items?$select=Id,Title,LastSuccessUtc,LastRunUtc,LastRunStatus,ConsecutiveFailures,StaleAfterMinutes,AffectsSync&$top=100')}",
               "parameters/headers": {
                 "Accept": "application/json;odata=nometadata"
               }
@@ -586,7 +586,7 @@
           "type": "Select",
           "inputs": {
             "from": "@body('Filter_Stale')",
-            "select": "@concat('<li><b>', coalesce(item()?['Title'], ''), '</b> - ', if(empty(coalesce(item()?['LastSuccessUtc'], '')), 'has never reported in since it was installed', concat('was last heard from on ', formatDateTime(coalesce(item()?['LastSuccessUtc'], utcNow()), 'ddd d MMM'), ' at ', formatDateTime(coalesce(item()?['LastSuccessUtc'], utcNow()), 'HH:mm'), ' UTC')), '. It should report in at least every ', if(greaterOrEquals(coalesce(item()?['StaleAfterMinutes'], 0), 120), concat(string(div(coalesce(item()?['StaleAfterMinutes'], 0), 60)), ' hours'), concat(string(coalesce(item()?['StaleAfterMinutes'], 0)), ' minutes')), '.', if(equals(coalesce(item()?['AffectsSync'], 'no'), 'yes'), ' <b>This is the flow that mirrors your calendar, so mirroring has stopped.</b>', ' This one is a helper - your calendar keeps syncing without it.'), '</li>')"
+            "select": "@concat('<li><b>', coalesce(item()?['Title'], ''), '</b> - ', if(empty(coalesce(item()?['LastSuccessUtc'], '')), 'has never reported in since it was installed', concat('was last heard from on ', formatDateTime(coalesce(item()?['LastSuccessUtc'], utcNow()), 'ddd d MMM'), ' at ', formatDateTime(coalesce(item()?['LastSuccessUtc'], utcNow()), 'HH:mm'), ' UTC')), '. It should report in at least every ', if(greaterOrEquals(coalesce(item()?['StaleAfterMinutes'], 0), 120), concat(string(div(coalesce(item()?['StaleAfterMinutes'], 0), 60)), ' hours'), concat(string(coalesce(item()?['StaleAfterMinutes'], 0)), ' minutes')), '.', if(equals(coalesce(item()?['AffectsSync'], 'no'), 'yes'), ' <b>This is the flow that mirrors your calendar, so mirroring has stopped.</b>', ' This one is a helper - your calendar keeps syncing without it.'), if(equals(coalesce(item()?['LastRunStatus'], ''), 'Running'), concat(' A sweep started on ', concat(formatDateTime(coalesce(item()?['LastRunUtc'], utcNow()), 'ddd d MMM'), ' at ', formatDateTime(coalesce(item()?['LastRunUtc'], utcNow()), 'HH:mm'), ' UTC'), ' and has not finished, which is why nothing has been reported since. Clear it with: ./scripts/unstick.sh --cancel'), ''), '</li>')"
           },
           "runAfter": {
             "Stale_Flows": [

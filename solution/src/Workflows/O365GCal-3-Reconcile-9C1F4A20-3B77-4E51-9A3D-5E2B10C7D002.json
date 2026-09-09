@@ -377,7 +377,7 @@
         },
         "Try_Reconcile": {
           "runAfter": {
-            "Get_Health_Row": [
+            "Mark_Run_Started": [
               "Succeeded"
             ]
           },
@@ -1368,6 +1368,34 @@
               "parameters/headers": {
                 "Accept": "application/json;odata=nometadata"
               }
+            }
+          }
+        },
+        "Mark_Run_Started": {
+          "runAfter": {
+            "Get_Health_Row": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "description": "Marks the row Running before the sweep, so a run that starts and never finishes is distinguishable from a flow that is not running at all. Only the end of the run writes LastSuccessUtc.",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('StateSiteUrl (o3gc_StateSiteUrl)')",
+              "parameters/method": "POST",
+              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''', parameters('HealthListName (o3gc_HealthListName)'), ''')/items(', string(first(body('Get_Health_Row')?['value'])?['Id']), ')')}",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata",
+                "X-HTTP-Method": "MERGE",
+                "IF-MATCH": "*"
+              },
+              "parameters/body": "@setProperty(setProperty(json('{}'), 'LastRunUtc', utcNow()), 'LastRunStatus', 'Running')"
             }
           }
         },

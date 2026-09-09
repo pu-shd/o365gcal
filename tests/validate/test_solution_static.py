@@ -1334,3 +1334,54 @@ def test_a_slow_run_does_not_log_itself_as_a_normal_one():
     message = Evaluator(stalled).eval(reconcile_summary_message())
     assert "SLOW" in message
     assert "in 84 minutes" in message, message
+
+
+def test_a_run_marks_itself_started_before_it_sweeps():
+    """Stamping only at the end left one observation - silence - covering two very
+    different situations: a flow that is not running, and a sweep that began and
+    wedged. The remedies differ, so the alert has to tell them apart."""
+    acts = definition(_reconcile())["actions"]
+    mark = acts["Mark_Run_Started"]
+    assert acts["Try_Reconcile"]["runAfter"] == {"Mark_Run_Started": ["Succeeded"]}
+    body = mark["inputs"]["parameters"]["parameters/body"]
+    assert "'LastRunStatus', 'Running'" in body
+    assert "LastSuccessUtc" not in body, (
+        "only a completed sweep may write LastSuccessUtc; marking the start must not"
+    )
+
+
+def test_the_watchdog_reads_when_the_unfinished_sweep_began():
+    """Without LastRunUtc the alert can say a sweep is unfinished but not since when,
+    which is the part that decides whether to act."""
+    for name, action in walk_actions(definition(_watchdog())["actions"]):
+        if name == "Get_Health":
+            uri = action["inputs"]["parameters"]["parameters/uri"]
+            assert "LastRunUtc" in uri and "LastRunStatus" in uri
+            return
+    raise AssertionError("no Get_Health in the watchdog")
+
+
+def test_a_wedged_sweep_is_reported_differently_from_a_silent_flow():
+    """The two cases produced identical advice - 'check it is switched on' - which is
+    useless when the flow is on and a run is sitting there half-finished."""
+    from wdl import Evaluator
+
+    select = _stale_html().lstrip("@")
+    now = datetime(2026, 9, 9, 0, 40, tzinfo=timezone.utc)
+
+    wedged = Evaluator({"utcNow": now, "item": {
+        "Title": "3 Reconcile", "LastSuccessUtc": "2026-09-08T19:44:06Z",
+        "LastRunUtc": "2026-09-08T22:14:58Z", "LastRunStatus": "Running",
+        "StaleAfterMinutes": 45, "AffectsSync": "yes"}}).eval(select)
+    assert "has not finished" in wedged
+    assert "unstick.sh --cancel" in wedged, "name the command that clears it"
+    assert "22:14 UTC" in wedged, "say when the stuck sweep began"
+
+    silent = Evaluator({"utcNow": now, "item": {
+        "Title": "6 Backup State", "LastSuccessUtc": "2026-09-07T02:00:49Z",
+        "LastRunUtc": "2026-09-07T02:00:49Z", "LastRunStatus": "Succeeded",
+        "StaleAfterMinutes": 1800, "AffectsSync": "no"}}).eval(select)
+    assert "has not finished" not in silent, (
+        "a flow that simply is not running must not be told to cancel a run"
+    )
+    assert "unstick.sh" not in silent
