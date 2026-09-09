@@ -265,15 +265,28 @@ def flow_description(key_expr: str = "outputs('Compose_Key')") -> str:
 #: drift apart; a test ties this number to the trigger itself.
 RECONCILE_CADENCE_MINUTES = 15
 
-#: Wall-clock minutes since the run began. Nothing in the expression language exposes
+#: Wall-clock seconds since the run began. Nothing in the expression language exposes
 #: a run's own start time, so the run stamps one into a variable and this measures
-#: against it. One tick is 100 nanoseconds, so 600,000,000 ticks is 60 seconds.
-RUN_ELAPSED_MINUTES = "div(sub(ticks(utcNow()), ticks(variables('RunStart'))), 600000000)"
+#: against it. One tick is 100 nanoseconds, so 10,000,000 ticks is one second.
+#:
+#: Seconds rather than minutes because the division is integer: a healthy 48-second
+#: reconcile reported itself as "complete in 0 min", which is the one duration the
+#: field exists to distinguish from a slow one.
+RUN_ELAPSED_SECONDS = "div(sub(ticks(utcNow()), ticks(variables('RunStart'))), 10000000)"
+
+
+def run_elapsed_human() -> str:
+    """Seconds while a run is quick, minutes once that stops being readable."""
+    return (
+        f"if(less({RUN_ELAPSED_SECONDS}, 90), "
+        f"concat(string({RUN_ELAPSED_SECONDS}), ' seconds'), "
+        f"concat(string(div({RUN_ELAPSED_SECONDS}, 60)), ' minutes'))"
+    )
 
 
 def run_is_slow(cadence_minutes: int = RECONCILE_CADENCE_MINUTES) -> str:
     """True when this run has already outlived the cadence that schedules it."""
-    return f"greater({RUN_ELAPSED_MINUTES}, {cadence_minutes})"
+    return f"greater({RUN_ELAPSED_SECONDS}, {cadence_minutes * 60})"
 
 
 def reconcile_summary_level() -> str:
@@ -285,8 +298,8 @@ def reconcile_summary_message() -> str:
     """The human-readable run summary, including how long the run actually took."""
     return (
         "concat('Reconcile complete in ', "
-        f"string({RUN_ELAPSED_MINUTES}), "
-        "' min. Outlook events: ', string(outputs('Guard_Outlook_Read')), "
+        f"{run_elapsed_human()}, "
+        "'. Outlook events: ', string(outputs('Guard_Outlook_Read')), "
         "'; active map rows: ', string(length(variables('ActiveRows'))), "
         "'; mutations applied: ', string(length(variables('Applied'))), "
         "'; deferred to next run: ', string(variables('Deferred')), "

@@ -1319,9 +1319,13 @@ def test_a_slow_run_does_not_log_itself_as_a_normal_one():
                          "Applied": [], "RunId": "r", "RunStart": start.isoformat()},
            "outputs": {"Guard_Outlook_Read": 18}}
 
-    quick = dict(ctx, utcNow=start + timedelta(seconds=40))
+    quick = dict(ctx, utcNow=start + timedelta(seconds=48))
     assert Evaluator(quick).eval(reconcile_summary_level()) == "Info"
-    assert "SLOW" not in Evaluator(quick).eval(reconcile_summary_message())
+    quick_message = Evaluator(quick).eval(reconcile_summary_message())
+    assert "SLOW" not in quick_message
+    # Integer division: reporting this in minutes said "complete in 0 min", which is
+    # the one duration the field exists to tell apart from a slow one.
+    assert "in 48 seconds" in quick_message, quick_message
 
     stalled = dict(ctx, utcNow=start + timedelta(minutes=84))
     assert Evaluator(stalled).eval(reconcile_summary_level()) == "Warn", (
@@ -1329,4 +1333,4 @@ def test_a_slow_run_does_not_log_itself_as_a_normal_one():
     )
     message = Evaluator(stalled).eval(reconcile_summary_message())
     assert "SLOW" in message
-    assert "in 84 min" in message, message
+    assert "in 84 minutes" in message, message
