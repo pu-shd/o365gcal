@@ -6,9 +6,20 @@ services:
     # events on a real calendar. See docs/ADMIN.md.
     environment:
       LIVE: "0"
+      # test_repo_hygiene.py skips when git cannot say what is tracked, which is right
+      # for a source tarball and wrong here: this is the container CI runs, and a
+      # silent skip would report the tenant-id guards green without running them.
+      O365GCAL_REQUIRE_GIT: "1"
+      # The work tree is owned by the host user, not by root, so git refuses it as
+      # "dubious ownership" unless told otherwise. Passed as config rather than
+      # written to a file, because the mount is read-only.
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: safe.directory
+      GIT_CONFIG_VALUE_0: /app
+      # The work tree is mounted read-only, and pytest's cache lives inside it.
+      PYTEST_ADDOPTS: "-p no:cacheprovider"
     volumes:
-      - ./src:/app/src:ro
-      - ./tests:/app/tests:ro
-      - ./solution:/app/solution:ro
-      - ./scripts:/app/scripts:ro
-      - ./docs:/app/docs:ro
+      # The whole repository, not a chosen few directories: the hygiene checks read
+      # every tracked file, and a file absent from the image is one they cannot see.
+      # Read-only, so a test can never write to the working tree.
+      - .:/app:ro

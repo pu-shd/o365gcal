@@ -21,8 +21,10 @@ COPY solution/ ./solution/
 COPY scripts/ ./scripts/
 COPY docs/ ./docs/
 
-# test_scripts.py parses the lifecycle scripts as zsh.
-RUN apt-get update && apt-get install -y --no-install-recommends zsh \
+# test_scripts.py parses the lifecycle scripts as zsh; test_repo_hygiene.py asks git
+# which files are tracked, and skips itself if git cannot answer -- so without git
+# installed the checks that keep one tenant's ids out of the repository never run.
+RUN apt-get update && apt-get install -y --no-install-recommends zsh git \
     && rm -rf /var/lib/apt/lists/*
 
 CMD ["python", "-m", "pytest"]

@@ -9,6 +9,7 @@ These checks look at what is *tracked*, not what exists: build output and per-us
 configuration are expected on disk and expected to be ignored.
 """
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -17,17 +18,41 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 
+#: Set in the container CI runs. These checks answer "what did we commit?", so they
+#: need git and a work tree; without either they skip, which is correct for a source
+#: tarball and dangerous in CI, where a skip is indistinguishable from a pass. Where
+#: this is set, an unanswerable question is an error instead.
+REQUIRE_GIT = os.environ.get("O365GCAL_REQUIRE_GIT") == "1"
+
+
+def _unavailable(reason: str):
+    if REQUIRE_GIT:
+        pytest.fail(
+            f"O365GCAL_REQUIRE_GIT is set, so these checks must run, but {reason}. "
+            f"Install git in the image and mount the repository, including .git/."
+        )
+    pytest.skip(reason)
+
+
+def _git(*args: str) -> subprocess.CompletedProcess:
+    try:
+        return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True)
+    except FileNotFoundError:
+        _unavailable("git is not installed")
+
 
 def tracked() -> list[str]:
-    out = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True)
+    out = _git("ls-files")
     if out.returncode != 0:
-        pytest.skip("not a git repository")
-    return [line for line in out.stdout.splitlines() if line]
+        _unavailable(f"git cannot list tracked files: {out.stderr.strip() or 'not a git repository'}")
+    files = [line for line in out.stdout.splitlines() if line]
+    if not files:
+        _unavailable("git lists no tracked files")
+    return files
 
 
 def is_ignored(path: str) -> bool:
-    return subprocess.run(["git", "check-ignore", "-q", path],
-                          cwd=ROOT).returncode == 0
+    return _git("check-ignore", "-q", path).returncode == 0
 
 
 #: Paths that must never be tracked, with what each would expose.
@@ -125,4 +150,23 @@ def test_gitignore_covers_both_settings_spellings():
     assert "*.settings.json" in text
     assert re.search(r"^settings\.json$", text, re.M), (
         "also ignore a bare settings.json"
+    )
+
+
+def test_every_tracked_file_is_actually_readable():
+    """The scans above skip a file they cannot open, so a file missing from the
+    environment reads as a clean one. That is how the container passed these checks
+    while seeing five of the tracked root files and none of `tools/`: the guards
+    reported green on a subset they never announced.
+    """
+    unreadable = []
+    for rel in tracked():
+        path = ROOT / rel
+        try:
+            path.read_text(errors="ignore")
+        except OSError as exc:
+            unreadable.append(f"{rel}: {type(exc).__name__}")
+    assert not unreadable, (
+        f"{len(unreadable)} tracked file(s) cannot be read here, so the tenant-id and "
+        f"email scans silently skipped them:\n" + "\n".join(sorted(unreadable)[:10])
     )
