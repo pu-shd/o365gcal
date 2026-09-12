@@ -8,7 +8,17 @@ if the automation itself breaks.
 Built with **Standard connectors only**. No Power Automate Premium licence is required
 by anyone who installs it.
 
-## For someone who just wants to use it
+## Installation
+
+Two command-line tools first — the Power Platform CLI and the Azure CLI. On macOS:
+
+```zsh
+brew install --cask dotnet-sdk
+dotnet tool install --global Microsoft.PowerApps.CLI.Tool
+brew install azure-cli
+```
+
+Then:
 
 ```zsh
 pac auth create        # sign in, opens a browser

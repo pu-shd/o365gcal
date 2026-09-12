@@ -123,3 +123,84 @@ def test_docs_do_not_quote_a_stale_cadence(doc):
     text = (DOCS / doc).read_text()
     for stale in ("every 30 minutes", "30-minute cycle", "within 30 minutes"):
         assert stale not in text, f"{doc} still says '{stale}'"
+
+
+# --------------------------------------------------------------- prerequisites
+
+#: The scripts a person following INSTALL.md actually runs. A tool that one of these
+#: refuses to start without is a prerequisite, and a prerequisite the documentation
+#: does not name is a dead end: the very first command in both README.md and
+#: INSTALL.md is `pac auth create`, which fails with "command not found" *before*
+#: install.sh gets the chance to explain how to install pac.
+USER_SCRIPTS = [
+    "install.sh", "bootstrap.sh", "configure.sh", "status.sh", "update.sh",
+    "teardown.sh", "enable-flows.sh", "backup.sh", "restore.sh", "run-flow.sh",
+    "preflight.sh", "show-state.sh",
+]
+
+#: Every hard requirement, and the string that proves INSTALL.md says how to get it.
+#: Documenting the name alone is not enough — "you need pac" without a command is
+#: the same dead end one sentence later.
+INSTALL_EVIDENCE = {
+    "pac": "Microsoft.PowerApps.CLI.Tool",
+    "az": "azure-cli",
+}
+
+
+def required_tools() -> set[str]:
+    """Tools a user-facing script exits over, read out of the scripts themselves.
+
+    Matches the two forms that gate a failure — `if ! command -v x` and
+    `command -v x ... ||` — and deliberately not `if command -v x`, which is how
+    build.sh treats python3 as an optional nicety.
+    """
+    tools: set[str] = set()
+    for name in USER_SCRIPTS:
+        path = ROOT / "scripts" / name
+        assert path.exists(), f"USER_SCRIPTS names {name}, which no longer exists"
+        text = path.read_text()
+        tools |= set(re.findall(r"if !\s*command -v ([a-z0-9_-]+)", text))
+        tools |= set(re.findall(r"command -v ([a-z0-9_-]+)[^\n|]*\|\|", text))
+    return tools
+
+
+def test_the_prerequisite_scan_still_finds_something():
+    """Silence must not read as success. If the scripts change how they probe for a
+    tool, this fails here rather than letting every check below pass vacuously."""
+    found = required_tools()
+    assert {"pac", "az"} <= found, (
+        f"expected pac and az to be detected as hard requirements, found {sorted(found)}"
+    )
+
+
+@pytest.mark.parametrize("tool", sorted(INSTALL_EVIDENCE))
+def test_install_doc_says_how_to_install_each_tool(tool):
+    text = (DOCS / "INSTALL.md").read_text()
+    assert f"`{tool}`" in text, f"INSTALL.md never names the {tool} prerequisite"
+    assert INSTALL_EVIDENCE[tool] in text, (
+        f"INSTALL.md names {tool} but not how to install it "
+        f"(expected to find '{INSTALL_EVIDENCE[tool]}')"
+    )
+
+
+def test_every_required_tool_is_documented():
+    """A newly added prerequisite fails here until someone writes it down."""
+    undocumented = required_tools() - set(INSTALL_EVIDENCE)
+    assert not undocumented, (
+        f"scripts now require {sorted(undocumented)}; add each to INSTALL.md's "
+        f"'Before you start' and to INSTALL_EVIDENCE"
+    )
+
+
+@pytest.mark.parametrize("doc", ["README.md", "docs/INSTALL.md"])
+def test_pac_is_installable_before_it_is_invoked(doc):
+    """Both documents open with `pac auth create`. The install command has to come
+    first on the page, or the reader hits command-not-found with no way forward."""
+    text = (ROOT / doc).read_text()
+    invoked = text.find("pac auth create")
+    installed = text.find("Microsoft.PowerApps.CLI.Tool")
+    assert invoked != -1, f"{doc} no longer mentions `pac auth create`; retarget this test"
+    assert installed != -1, f"{doc} never says how to install pac"
+    assert installed < invoked, (
+        f"{doc} tells the reader to run `pac auth create` before saying how to install pac"
+    )

@@ -22,6 +22,33 @@ You need:
 - A SharePoint site you can create lists in. A team site works; so does a personal
   site. The automation keeps its bookkeeping there.
 
+### Two command-line tools
+
+Everything below is driven from a terminal, and two tools have to be there before the
+first command works:
+
+| | |
+|---|---|
+| `pac` | The Power Platform CLI. Installs and configures the solution. |
+| `az` | The Azure CLI. Used to switch the flows on, which the Power Platform CLI cannot do. |
+
+On macOS:
+
+```zsh
+brew install --cask dotnet-sdk           # pac is distributed as a .NET tool
+dotnet tool install --global Microsoft.PowerApps.CLI.Tool
+brew install azure-cli
+```
+
+On Linux, install the [.NET SDK](https://learn.microsoft.com/dotnet/core/install/linux)
+and the [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli-linux) from
+Microsoft's packages, then run the same `dotnet tool install` line. `pac` itself is the
+same .NET tool on every platform.
+
+If `dotnet tool install` succeeds but `pac` is still not found, the tools directory is
+not on your `PATH`; add `export PATH="$PATH:$HOME/.dotnet/tools"` to `~/.zshrc` and open
+a new terminal.
+
 **One thing to check first.** Some organisations block Microsoft and Google connectors
 from being used in the same flow. If yours does, nothing here will work and no
 workaround exists on this side. Test it in five minutes:
