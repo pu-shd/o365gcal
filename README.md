@@ -56,7 +56,7 @@ Full walkthrough in **[docs/INSTALL.md](docs/INSTALL.md)**.
 | `./scripts/restore.sh <dir>` | Rebuild an install from a backup |
 | `./scripts/preflight.sh` | Check the DLP gate before you start |
 
-### Nothing here deletes a calendar event
+### Data Protection
 
 `update.sh`, `teardown.sh`, `backup.sh` and `restore.sh` never create, change or
 remove an event on any calendar, and a test enforces it. An upgrade or a teardown
@@ -73,7 +73,7 @@ using the `o365gcal-key` marker every mirrored event carries — no backup requi
 > being used in the same flow. `./scripts/preflight.sh` explains the five-minute test.
 > If your tenant blocks it, nothing here can work and no workaround exists on this side.
 
-## For someone maintaining it
+## Development
 
 ```zsh
 make test          # full offline suite locally
@@ -86,7 +86,7 @@ make export        # pull maker-portal edits back into solution/src
 `solution/src/` is the source of truth. Edits made in the maker portal are pulled back
 with `make export`; never hand-edit the zips.
 
-## Behaviour at a glance
+## Synchronization
 
 | | |
 |---|---|
@@ -101,7 +101,7 @@ with `make export`; never hand-edit the zips.
 Full detail, including every limit guard, in
 **[docs/SYNCHRONIZATION.md](docs/SYNCHRONIZATION.md)**.
 
-## How it works, briefly
+## How it Works
 
 Six flows. The **scheduled reconciler is the engine of record** — it diffs a full
 Outlook calendar read against a SharePoint sync map and applies the difference. The
@@ -139,7 +139,7 @@ docs/             INSTALL, ADMIN, ARCHITECTURE, TROUBLESHOOTING
 - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** — why it is shaped this way
 - **[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** — when something looks wrong
 
-## Known limits
+## Known Limitations
 
 Recurring meetings become individual Google events (the connector cannot create
 repeating events at all). One-way only. Changes appear within about 15 minutes, and
