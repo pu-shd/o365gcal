@@ -267,10 +267,11 @@ apply_actions = {
             "concat('_api/web/lists/getbytitle(''', " + E("StateListName") + ", ''')/items'), "
             "concat('_api/web/lists/getbytitle(''', " + E("StateListName") + ", ''')/items(', "
             "string(" + ROW_FOR_KEY + "?['Id']), ')'))}",
-            ("@setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), "
+            # No GoogleHtmlLink: it is a link column, which takes an object, and a plain
+            # string gets the whole row refused. Flow 2 does not write it either.
+            ("@setProperty(setProperty(setProperty(setProperty(json('{}'), "
              "'Title', items('For_Each_Repair')?['key']), "
              "'GoogleEventId', items('For_Each_Repair')?['id']), "
-             "'GoogleHtmlLink', items('For_Each_Repair')?['htmlLink']), "
              "'SyncState', 'Active'), "
              "'LastError', 'rebuilt by dedup; fingerprint pending next reconcile')")),
             "description": d("MERGE when a row exists, POST when it does not - the same "

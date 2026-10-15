@@ -796,7 +796,7 @@
                               "Accept": "application/json;odata=nometadata",
                               "Content-Type": "application/json;odata=nometadata"
                             },
-                            "parameters/body": "@setProperty(setProperty(setProperty(setProperty(setProperty(json('{}'), 'Title', items('For_Each_Repair')?['key']), 'GoogleEventId', items('For_Each_Repair')?['id']), 'GoogleHtmlLink', items('For_Each_Repair')?['htmlLink']), 'SyncState', 'Active'), 'LastError', 'rebuilt by dedup; fingerprint pending next reconcile')"
+                            "parameters/body": "@setProperty(setProperty(setProperty(setProperty(json('{}'), 'Title', items('For_Each_Repair')?['key']), 'GoogleEventId', items('For_Each_Repair')?['id']), 'SyncState', 'Active'), 'LastError', 'rebuilt by dedup; fingerprint pending next reconcile')"
                           }
                         },
                         "description": "MERGE when a row exists, POST when it does not - the same upsert the child flow uses."
