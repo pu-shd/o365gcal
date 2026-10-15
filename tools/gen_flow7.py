@@ -8,7 +8,11 @@ of expressions that must match src/o365gcal/dedup.py. Regenerate with:
 
 import json
 import textwrap
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from o365gcal import expressions as x  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "solution/src/Workflows/O365GCal-7-Dedup-9C1F4A20-3B77-4E51-9A3D-5E2B10C7D008.json"
@@ -99,7 +103,7 @@ prev = add("Compose_SliceCount", {"type": "Compose",
 collect_pair = {
     "runAfter": {}, "type": "AppendToArrayVariable",
     "inputs": {"name": "Pairs", "value": {
-        "key": "@trim(last(split(coalesce(item()?['description'], ''), '" + MARKER + "')))",
+        "key": "@" + x.marker_key("item()?['description']"),
         "id": "@item()?['id']",
         "summary": "@coalesce(item()?['summary'], '')",
         "htmlLink": "@coalesce(item()?['htmlLink'], '')"}}}

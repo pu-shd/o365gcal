@@ -176,6 +176,10 @@ class Evaluator:
             return a[0][int(a[1]) : int(a[1]) + int(a[2])]
         if name == "trim":
             return (a[0] or "").strip()
+        if name == "split":
+            return (a[0] or "").split(a[1])
+        if name == "last":
+            return a[0][-1] if a[0] else None
         if name == "replace":
             return (a[0] or "").replace(a[1], a[2])
         if name == "decodeUriComponent":

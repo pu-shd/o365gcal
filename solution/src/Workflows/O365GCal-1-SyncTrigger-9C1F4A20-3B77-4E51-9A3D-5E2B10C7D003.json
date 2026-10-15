@@ -237,7 +237,7 @@
                       "Compose_Key": {
                         "runAfter": {},
                         "type": "Compose",
-                        "inputs": "@concat(item()?['iCalUId'], '|', formatDateTime(item()?['startWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'))"
+                        "inputs": "@substring(concat(item()?['iCalUId'], '|', formatDateTime(item()?['startWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z')), max(0, sub(length(concat(item()?['iCalUId'], '|', formatDateTime(item()?['startWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'))), 255)), min(length(concat(item()?['iCalUId'], '|', formatDateTime(item()?['startWithTimeZone'], 'yyyy-MM-ddTHH:mm:ss\\Z'))), 255))"
                       },
                       "Lookup_Row": {
                         "runAfter": {

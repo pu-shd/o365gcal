@@ -360,7 +360,7 @@
                             "inputs": {
                               "name": "Pairs",
                               "value": {
-                                "key": "@trim(last(split(coalesce(item()?['description'], ''), 'o365gcal-key:')))",
+                                "key": "@substring(trim(last(split(coalesce(item()?['description'], ''), 'o365gcal-key:'))), max(0, sub(length(trim(last(split(coalesce(item()?['description'], ''), 'o365gcal-key:')))), 255)), min(length(trim(last(split(coalesce(item()?['description'], ''), 'o365gcal-key:')))), 255))",
                                 "id": "@item()?['id']",
                                 "summary": "@coalesce(item()?['summary'], '')",
                                 "htmlLink": "@coalesce(item()?['htmlLink'], '')"

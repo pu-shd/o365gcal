@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from o365gcal import expressions as x
 from o365gcal.schema import HEARTBEAT_EXPECTATIONS
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -1446,3 +1447,51 @@ def test_the_derived_array_is_the_canonical_expression_set():
     }, "run tools/patch_flows.py"
     assert scope["Select_Row_Pairs"]["inputs"]["select"] == "@" + ROW_PAIR
     assert scope["Filter_Needs_Work"]["inputs"]["where"] == "@" + NEEDS_WORK
+
+
+def _flow(stem):
+    return json.loads(next((ROOT / "solution" / "src" / "Workflows").glob(f"*{stem}*.json")).read_text())
+
+
+def _strings(node):
+    if isinstance(node, str):
+        yield node
+    elif isinstance(node, dict):
+        for v in node.values():
+            yield from _strings(v)
+    elif isinstance(node, list):
+        for v in node:
+            yield from _strings(v)
+
+
+def test_the_change_trigger_builds_the_same_bounded_key():
+    """Flow 1 keys its occurrences itself. An unbounded key there would find no row
+    for a long-UID invitation and create it on Google again."""
+    want = "@" + x.correlation_key("item()?['iCalUId']", "item()?['startWithTimeZone']")
+    assert want in list(_strings(_flow("1-SyncTrigger")))
+
+
+def test_dedup_reads_keys_through_the_bound():
+    pair = (_flow("7-Dedup")["properties"]["definition"]["actions"]["For_Each_Slice"]
+            ["actions"]["Check_Saturated"]["else"]["actions"]["For_Each_Event"]["actions"]
+            ["Check_Marked"]["actions"]["Collect_Pair"]["inputs"]["value"])
+    assert pair["key"] == "@" + x.marker_key("item()?['description']")
+
+
+
+def test_the_reconciler_keys_through_the_bound():
+    select = (_flow("3-Reconcile")["properties"]["definition"]["actions"]["Try_Reconcile"]
+              ["actions"]["Select_Derived"]["inputs"]["select"])
+    assert select["key"] == "@" + x.KEY_INLINE
+
+
+#: Power Automate's ceiling on one expression. Over it, the flow imports and then
+#: refuses to save or run.
+EXPRESSION_LIMIT = 8192
+
+
+@pytest.mark.parametrize("path", sorted((ROOT / "solution" / "src" / "Workflows").glob("*.json")),
+                         ids=lambda p: p.name.split("-9C1F")[0])
+def test_every_expression_fits_the_platform_limit(path):
+    longest = max(_strings(json.loads(path.read_text())), key=len)
+    assert len(longest) <= EXPRESSION_LIMIT, f"{len(longest)} chars: {longest[:80]}"
