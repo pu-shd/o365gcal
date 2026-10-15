@@ -148,7 +148,12 @@ PY
 [[ -n "$WERE_ON" ]] && ok "active: $WERE_ON" || warn "none currently active"
 
 info "Switching flows off"
-"$REPO_ROOT/scripts/enable-flows.sh" --off >/dev/null 2>&1 && ok "off" || warn "could not switch all off"
+if "$REPO_ROOT/scripts/enable-flows.sh" --off >"$TMP/off.log" 2>&1; then
+  ok "off"
+else
+  warn "could not switch all off - enable-flows.sh said:"
+  grep -vE "done$|^$" "$TMP/off.log" | sed 's/^/      /'
+fi
 
 info "Importing $LOCAL"
 pac solution import --path "$DIST_DIR/${SOLUTION_NAME}_managed.zip" \

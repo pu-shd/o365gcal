@@ -459,3 +459,12 @@ def test_apply_does_not_pretend_to_pass_inputs_the_api_drops():
     assert "make.powerautomate.com/environments/$ENV_ID/flows/$ID/details" in branch
     assert "Apply deletions" in branch
     assert "continue" in branch, "--apply must not go on to trigger a dry run"
+
+
+def test_update_says_why_flows_could_not_be_switched_off():
+    """'could not switch all off' with the reason sent to /dev/null left a real upgrade
+    with a warning nobody could act on."""
+    text = (ROOT / "scripts" / "update.sh").read_text()
+    line = next(l for l in text.splitlines() if "enable-flows.sh\" --off" in l)
+    assert "/dev/null" not in line, line
+    assert "could not switch all off" in text
