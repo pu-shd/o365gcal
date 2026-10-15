@@ -11,6 +11,8 @@
 #   ./scripts/run-flow.sh --apply 7   flow 7 only: actually delete duplicates
 #   ./scripts/run-flow.sh --detail 3  per-action detail of the NEWEST run
 #   ./scripts/run-flow.sh --failed 3  per-action detail of the newest FAILED run
+#   ./scripts/run-flow.sh --outputs Write_Map_Row 2   one action's outputs, newest run
+#   ./scripts/run-flow.sh --sizes Write_Map_Row 2     length of each field it sent
 set -euo pipefail
 
 autoload -U colors && colors
@@ -28,10 +30,14 @@ APPLY=0
 # Reads an action's actual outputs. Run status alone says a flow finished, not what it
 # computed - and for a dry run, what it computed is the entire point.
 [[ "${1:-}" == "--outputs" ]] && { MODE="outputs"; ACTION="$2"; shift 2 }
+# The length of every field an action sent, never the values. "Invalid text value"
+# from SharePoint means an over-long or unprintable field, and this says which one
+# without putting meeting subjects and bodies on the screen.
+[[ "${1:-}" == "--sizes" ]] && { MODE="sizes"; ACTION="$2"; shift 2 }
 # Only flow 7 reads this. Without it that flow reports what it would do and changes
 # nothing, which is the right default for something that deletes calendar events.
 [[ "${1:-}" == "--apply" ]]  && { APPLY=1;       shift }
-[[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && { sed -n '2,12p' "$0"; exit 0 }
+[[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && { sed -n '2,15p' "$0"; exit 0 }
 (( $# )) || die "which flow? e.g. ./scripts/run-flow.sh 0"
 
 command -v pac >/dev/null 2>&1 || die "pac CLI not found. Install: dotnet tool install --global Microsoft.PowerApps.CLI.Tool"
@@ -184,6 +190,82 @@ if len(lines) > 40:
 PY
 }
 
+show_sizes() {  # show_sizes <flow-id> <label> <action-name>
+  curl -sS "${FH[@]}" "$API/flows/$1/runs?api-version=2016-11-01&\$top=1" -o "$TMP/runs.json" || true
+  RUN="$(python3 - "$TMP/runs.json" <<'PY'
+import json, sys
+runs = json.load(open(sys.argv[1])).get("value", [])
+print(runs[0]["name"] if runs else "")
+PY
+)"
+  [[ -n "$RUN" ]] || { warn "$2 - no runs"; return }
+  curl -sS "${FH[@]}" "$API/flows/$1/runs/$RUN/actions?api-version=2016-11-01" -o "$TMP/actions.json" || true
+  LINK="$(python3 - "$TMP/actions.json" "$3" <<'PY'
+import json, sys
+doc = json.load(open(sys.argv[1]))
+for a in doc.get("value", []):
+    if a.get("name") == sys.argv[2]:
+        print((a.get("properties", {}).get("inputsLink") or {}).get("uri", ""))
+        break
+PY
+)"
+  if [[ -z "$LINK" ]]; then
+    warn "$2 - no inputs recorded for action '$3'"
+    return
+  fi
+  info "$2 -> $3 inputs (run $RUN)"
+  curl -sS "$LINK" -o "$TMP/in.json" || true
+  python3 - "$TMP/in.json" "${REPO_SRC:h:h}/src" <<'PY'
+import json, sys
+
+sys.path.insert(0, sys.argv[2])
+from o365gcal.schema import ALL_LISTS, TEXT
+
+# Only single-line text has the 255 limit and refuses control characters. Multi-line
+# columns hold far more, and the fingerprint's separators are control characters on
+# purpose, so flagging those would point at the wrong field.
+LIMITED = {"Title"} | {f["name"] for spec in ALL_LISTS for f in spec["fields"]
+                       if f["type"] == TEXT}
+
+try:
+    doc = json.load(open(sys.argv[1]))
+except Exception:
+    print("  (inputs unreadable)")
+    raise SystemExit
+
+# A request body may arrive as an object or as a JSON string inside the inputs.
+def records(node):
+    if isinstance(node, str) and node.lstrip().startswith("{"):
+        try:
+            node = json.loads(node)
+        except ValueError:
+            return
+    if isinstance(node, dict):
+        if any(isinstance(v, str) for v in node.values()) and "Title" in node:
+            yield node
+        for v in node.values():
+            yield from records(v)
+    elif isinstance(node, list):
+        for v in node:
+            yield from records(v)
+
+found = list(records(doc))
+if not found:
+    print("  no record with a Title field in these inputs")
+for rec in found:
+    for name, value in rec.items():
+        if not isinstance(value, str):
+            continue
+        if name not in LIMITED:
+            print(f"  {name:24} {len(value):6} chars  (not single-line text; no 255 limit)")
+            continue
+        ctrl = sum(1 for ch in value if ord(ch) < 32)
+        flag = "  OVER 255" if len(value) > 255 else ""
+        extra = f", {ctrl} control char(s)" if ctrl else ""
+        print(f"  {name:24} {len(value):6} chars{extra}{flag}")
+PY
+}
+
 show_runs() {  # show_runs <flow-id> <label>
   curl -sS "${FH[@]}" "$API/flows/$1/runs?api-version=2016-11-01&\$top=${RUNS_TOP:-5}" -o "$TMP/runs.json" || true
   python3 - "$TMP/runs.json" "$2" <<'PY'
@@ -232,6 +314,10 @@ PY
     continue
   fi
 
+  if [[ "$MODE" == "sizes" ]]; then
+    show_sizes "$ID" "$LABEL" "$ACTION"
+    continue
+  fi
   if [[ "$MODE" == "outputs" ]]; then
     show_outputs "$ID" "$LABEL" "$ACTION"
     continue
