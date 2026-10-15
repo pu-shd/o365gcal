@@ -1536,3 +1536,18 @@ def test_the_change_email_never_calls_a_failed_write_mirrored():
     body = acts["Notify_Changes"]["actions"]["Send_Change_Notice"]["inputs"]["parameters"]
     assert "Mirrored just now" not in body["emailMessage/Body"]
     assert "mirrored" not in body["emailMessage/Subject"]
+
+
+def test_no_flow_writes_a_link_column_as_plain_text():
+    """SharePoint link (URL) columns take an object, not a string. A plain string is a
+    400 - 'A StartObject node was expected' - and the whole row is refused. Flow 7's
+    map repair did exactly that, so every dedup that deleted copies then failed to
+    record the survivor."""
+    from o365gcal.schema import ALL_LISTS, URL
+    link_columns = {f["name"] for spec in ALL_LISTS for f in spec["fields"] if f["type"] == URL}
+    assert link_columns, "the schema has link columns; this test must look for them"
+    for path in sorted((ROOT / "solution" / "src" / "Workflows").glob("*.json")):
+        for s in _strings(json.loads(path.read_text())):
+            for name in link_columns:
+                # As a property being set, not as a value (flow 0 names the column it creates).
+                assert f"), '{name}', " not in s, f"{path.name} writes {name} as plain text"
