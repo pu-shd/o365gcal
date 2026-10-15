@@ -32,7 +32,8 @@ done
 
 command -v az >/dev/null 2>&1 || die "az CLI not found. Install with: brew install azure-cli"
 
-ORG="$(pac org who 2>/dev/null | awk -F': +' '/Org URL/{print $2}' | tr -d '[:space:]')"
+command -v pac >/dev/null 2>&1 || die "pac CLI not found. Install: dotnet tool install --global Microsoft.PowerApps.CLI.Tool"
+ORG="$(pac org who 2>/dev/null | awk -F': +' '/Org URL/{print $2}' | tr -d '[:space:]' || true)"
 [[ -n "$ORG" ]] || die "Could not determine the org URL. Run: pac auth create --environment <url>"
 ORG="${ORG%/}"
 TENANT="${O365GCAL_TENANT:-$(az account show --query tenantId -o tsv 2>/dev/null || true)}"
