@@ -34,9 +34,10 @@ APPLY=0
 [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && { sed -n '2,12p' "$0"; exit 0 }
 (( $# )) || die "which flow? e.g. ./scripts/run-flow.sh 0"
 
-ORG="$(pac org who 2>/dev/null | awk -F': +' '/Org URL/{print $2}' | tr -d '[:space:]')"
-ENV_ID="${O365GCAL_ENV_ID:-$(pac org who 2>/dev/null | awk -F': +' '/Environment ID/{print $2}' | tr -d '[:space:]')}"
-[[ -n "$ORG" && -n "$ENV_ID" ]] || die "Could not read org/environment from pac."
+command -v pac >/dev/null 2>&1 || die "pac CLI not found. Install: dotnet tool install --global Microsoft.PowerApps.CLI.Tool"
+ORG="$(pac org who 2>/dev/null | awk -F': +' '/Org URL/{print $2}' | tr -d '[:space:]' || true)"
+ENV_ID="${O365GCAL_ENV_ID:-$(pac org who 2>/dev/null | awk -F': +' '/Environment ID/{print $2}' | tr -d '[:space:]' || true)}"
+[[ -n "$ORG" && -n "$ENV_ID" ]] || die "Could not read org/environment from pac. Run: pac auth create --environment <url>"
 ORG="${ORG%/}"
 TENANT="${O365GCAL_TENANT:-$(az account show --query tenantId -o tsv 2>/dev/null || true)}"
 

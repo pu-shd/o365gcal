@@ -396,3 +396,42 @@ def test_unstick_documents_every_flag_it_accepts():
     header = "\n".join(lines[1:int(match.group(1))])
     for flag in ("--cancel", "--older-than", "--flow"):
         assert flag in header, f"{flag} is outside the range --help prints"
+
+
+#: Scripts that read the environment from `pac org who` themselves rather than through
+#: common.sh, with arguments that get each one as far as that read.
+PAC_READERS = {
+    "run-flow.sh": ["--detail", "2"],
+    "enable-flows.sh": ["--list"],
+    "show-envvars.sh": [],
+    "show-connections.sh": [],
+    "fetch-connector-swagger.sh": ["{tmp}/swagger"],
+}
+
+
+def _stub(bin_dir: Path, name: str, exit_code: int) -> None:
+    path = bin_dir / name
+    path.write_text(f"#!/bin/sh\nexit {exit_code}\n")
+    path.chmod(0o755)
+
+
+@pytest.mark.parametrize("pac", ["missing", "signed-out"])
+@pytest.mark.parametrize("script", sorted(PAC_READERS))
+def test_a_missing_or_signed_out_pac_is_reported_not_silent(script, pac, tmp_path):
+    """Under `set -euo pipefail`, a failing `pac org who` inside a command substitution
+    ends the script on the spot - exit 127 or 1 with nothing printed, which reads as
+    'ran and found nothing'. Each script must say what is wrong instead."""
+    zsh = shutil.which("zsh")
+    if not zsh:
+        pytest.skip("zsh not available")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _stub(bin_dir, "az", 0)
+    if pac == "signed-out":
+        _stub(bin_dir, "pac", 1)
+    args = [a.replace("{tmp}", str(tmp_path)) for a in PAC_READERS[script]]
+    env = {"HOME": str(tmp_path), "PATH": f"{bin_dir}:/usr/bin:/bin"}
+    r = subprocess.run([zsh, str(ROOT / "scripts" / script), *args], env=env,
+                       capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=60)
+    assert r.returncode != 0, f"{script} succeeded with no usable pac"
+    assert "pac" in r.stderr, f"{script} exited {r.returncode} without saying why: {r.stderr!r}"

@@ -15,8 +15,8 @@ die()  { print -P "%F{red}error:%f $*" >&2; exit 1 }
 command -v az >/dev/null 2>&1 || die "az CLI not found. Install with: brew install azure-cli"
 
 RESOURCE="https://service.powerapps.com/"
-ENV_ID="${O365GCAL_ENV_ID:-$(pac org who 2>/dev/null | awk -F': +' '/Environment ID/{print $2}' | tr -d '[:space:]')}"
-[[ -n "$ENV_ID" ]] || die "Could not determine the environment ID."
+ENV_ID="${O365GCAL_ENV_ID:-$(pac org who 2>/dev/null | awk -F': +' '/Environment ID/{print $2}' | tr -d '[:space:]' || true)}"
+[[ -n "$ENV_ID" ]] || die "Could not determine the environment ID. Install pac (dotnet tool install --global Microsoft.PowerApps.CLI.Tool) and run 'pac auth create --environment <url>', or set O365GCAL_ENV_ID."
 TENANT="${O365GCAL_TENANT:-$(az account show --query tenantId -o tsv 2>/dev/null || true)}"
 
 TOKEN="$(az account get-access-token --resource "$RESOURCE" --query accessToken -o tsv 2>/dev/null || true)"

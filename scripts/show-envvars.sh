@@ -9,8 +9,9 @@ warn() { print -P "%F{yellow}  ! %f$*" }
 info() { print -P "%F{cyan}==>%f $*" }
 die()  { print -P "%F{red}error:%f $*" >&2; exit 1 }
 
-ORG="$(pac org who 2>/dev/null | awk -F': +' '/Org URL/{print $2}' | tr -d '[:space:]')"
-[[ -n "$ORG" ]] || die "no org URL"
+command -v pac >/dev/null 2>&1 || die "pac CLI not found. Install: dotnet tool install --global Microsoft.PowerApps.CLI.Tool"
+ORG="$(pac org who 2>/dev/null | awk -F': +' '/Org URL/{print $2}' | tr -d '[:space:]' || true)"
+[[ -n "$ORG" ]] || die "Could not determine the org URL. Run: pac auth create --environment <url>"
 ORG="${ORG%/}"
 TOKEN="$(az account get-access-token --resource "$ORG" --query accessToken -o tsv 2>/dev/null || true)"
 [[ -n "$TOKEN" ]] || die "no Dataverse token; run: az login --scope \"$ORG/.default\""

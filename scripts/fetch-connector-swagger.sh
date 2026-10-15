@@ -29,8 +29,8 @@ RESOURCE="https://service.powerapps.com/"
 
 # The apis endpoint refuses to answer without an environment filter. Discover it from
 # the active pac session; override with O365GCAL_ENV_ID if you need a different one.
-ENV_ID="${O365GCAL_ENV_ID:-$(pac org who 2>/dev/null | awk -F': +' '/Environment ID/{print $2}' | tr -d '[:space:]')}"
-[[ -n "$ENV_ID" ]] || die "Could not determine the environment ID. Run 'pac auth create --environment <url>' first, or set O365GCAL_ENV_ID."
+ENV_ID="${O365GCAL_ENV_ID:-$(pac org who 2>/dev/null | awk -F': +' '/Environment ID/{print $2}' | tr -d '[:space:]' || true)}"
+[[ -n "$ENV_ID" ]] || die "Could not determine the environment ID. Install pac (dotnet tool install --global Microsoft.PowerApps.CLI.Tool) and run 'pac auth create --environment <url>' first, or set O365GCAL_ENV_ID."
 
 # Tenant for the interactive fallback. Override with O365GCAL_TENANT if az is signed
 # in to a different directory than the Power Platform environment.
