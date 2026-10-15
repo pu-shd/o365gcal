@@ -1495,3 +1495,44 @@ EXPRESSION_LIMIT = 8192
 def test_every_expression_fits_the_platform_limit(path):
     longest = max(_strings(json.loads(path.read_text())), key=len)
     assert len(longest) <= EXPRESSION_LIMIT, f"{len(longest)} chars: {longest[:80]}"
+
+
+def _apply_flow_actions():
+    return _flow("2-ApplyEvent")["properties"]["definition"]["actions"]
+
+
+def test_the_apply_flow_reports_whether_it_applied():
+    """Flow 2 always answers 200, because its Catch swallows the failure so that one bad
+    event cannot stall the batch. The answer must therefore carry the outcome, or the
+    caller has no way to tell a write from a failed one."""
+    acts = _apply_flow_actions()
+    body = acts["Respond_to_the_calling_flow"]["inputs"]["body"]
+    assert body["outcome"] == "@{variables('Outcome')}"
+    assert "outcome" in acts["Respond_to_the_calling_flow"]["inputs"]["schema"]["properties"]
+    catch = acts["Check_DryRun"]["else"]["actions"]["Catch_Apply"]["actions"]
+    assert catch["Set_Outcome_Failed"]["inputs"] == {"name": "Outcome", "value": "Failed"}
+    assert catch["Set_Outcome_Failed"]["runAfter"] == {}, "must not depend on logging succeeding"
+    dry = acts["Check_DryRun"]["actions"]
+    assert dry["Set_Outcome_DryRun"]["inputs"] == {"name": "Outcome", "value": "DryRun"}
+    assert dry["Set_Outcome_DryRun"]["runAfter"] == {}
+
+
+def test_the_outcome_starts_as_applied_before_anything_can_fail():
+    acts = _apply_flow_actions()
+    init = acts["Init_Outcome"]["inputs"]["variables"][0]
+    assert init == {"name": "Outcome", "type": "string", "value": "Applied"}
+    assert acts["Init_GoogleEventId"]["runAfter"] == {"Init_Outcome": ["Succeeded"]}
+
+
+def _reconcile_actions():
+    return _flow("3-Reconcile")["properties"]["definition"]["actions"]["Try_Reconcile"]["actions"]
+
+
+def test_the_change_email_never_calls_a_failed_write_mirrored():
+    acts = _reconcile_actions()
+    record = (acts["For_Each_Outlook_Event"]["actions"]["Apply_If_Needed"]["actions"]
+              ["Record_Change"]["inputs"]["value"])
+    assert record["operation"] == "@" + x.CHANGE_LABEL
+    body = acts["Notify_Changes"]["actions"]["Send_Change_Notice"]["inputs"]["parameters"]
+    assert "Mirrored just now" not in body["emailMessage/Body"]
+    assert "mirrored" not in body["emailMessage/Subject"]

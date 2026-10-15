@@ -711,7 +711,7 @@
                       "inputs": {
                         "name": "Changes",
                         "value": {
-                          "operation": "@outputs('Decide')",
+                          "operation": "@if(equals(coalesce(body('Run_Apply_Event')?['outcome'], ''), 'Applied'), outputs('Decide'), concat(outputs('Decide'), if(equals(coalesce(body('Run_Apply_Event')?['outcome'], ''), 'Failed'), ' FAILED - see the O365GCalLog list', if(equals(coalesce(body('Run_Apply_Event')?['outcome'], ''), 'DryRun'), ' (practice mode - nothing was written)', ' (outcome not reported)'))))",
                           "subject": "@items('For_Each_Outlook_Event')?['subject']",
                           "startsAt": "@items('For_Each_Outlook_Event')?['startsAt']"
                         }
@@ -1180,8 +1180,8 @@
                     },
                     "parameters": {
                       "emailMessage/To": "@parameters('AlertEmail (o3gc_AlertEmail)')",
-                      "emailMessage/Subject": "@{concat('O365GCal: ', string(length(variables('Changes'))), ' calendar change(s) mirrored')}",
-                      "emailMessage/Body": "<h3>Mirrored just now</h3><ul>@{join(body('Select_Changes_Html'), '')}</ul><p>Outlook events in the window: @{outputs('Guard_Outlook_Read')}. Mirrored events tracked: @{length(variables('ActiveRows'))}.@{if(greater(variables('Deferred'), 0), concat(' Deferred to the next run: ', string(variables('Deferred')), '.'), '')}</p><p>Turn this off by setting NotifyOnChange to no; the daily digest covers the same ground once a day.</p>",
+                      "emailMessage/Subject": "@{concat('O365GCal: ', string(length(variables('Changes'))), ' calendar change(s) in the latest sync')}",
+                      "emailMessage/Body": "<h3>Latest sync</h3><ul>@{join(body('Select_Changes_Html'), '')}</ul><p>Outlook events in the window: @{outputs('Guard_Outlook_Read')}. Mirrored events tracked: @{length(variables('ActiveRows'))}.@{if(greater(variables('Deferred'), 0), concat(' Deferred to the next run: ', string(variables('Deferred')), '.'), '')}</p><p>Turn this off by setting NotifyOnChange to no; the daily digest covers the same ground once a day.</p>",
                       "emailMessage/Importance": "Low"
                     }
                   }

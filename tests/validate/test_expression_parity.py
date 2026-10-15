@@ -404,3 +404,20 @@ def test_the_verification_sweep_still_forces_a_rebuild(config):
         event, config, rows=_pairs_for([row]),
     )
     assert needs_work, "a cleared fingerprint must not read as unchanged"
+
+
+@pytest.mark.parametrize("outcome,label", [
+    ("Applied", "Create"),
+    ("Failed", "Create FAILED - see the O365GCalLog list"),
+    ("DryRun", "Create (practice mode - nothing was written)"),
+    (None, "Create (outcome not reported)"),
+], ids=["applied", "failed", "dry-run", "old-child-flow"])
+def test_change_label_reports_what_actually_happened(outcome, label):
+    """The change email once said 'Mirrored just now - Create' every 15 minutes for a
+    meeting that never got written. Only an applied change may read as done; a child
+    flow that does not report an outcome is not assumed to have succeeded."""
+    response = {} if outcome is None else {"outcome": outcome}
+    got = Evaluator({"item": {}, "parameters": {}, "variables": {}, "utcNow": NOW,
+                     "outputs": {"Decide": "Create"},
+                     "body": {"Run_Apply_Event": response}}).eval(x.CHANGE_LABEL)
+    assert got == label

@@ -421,3 +421,17 @@ ROW_PAIR = ("concat(coalesce(item()?['Title'], ''), '|', "
 #: the verification sweep so the event would be rebuilt.
 NEEDS_WORK = ("not(contains(body('Select_Row_Pairs'), "
               "concat(item()?['key'], '|', item()?['fingerprint'])))")
+
+
+_OUTCOME = "coalesce(body('Run_Apply_Event')?['outcome'], '')"
+
+#: How one change reads in the change email. Flow 2 answers 200 even when its Catch
+#: ran, so only the outcome it reports says whether anything happened. Anything but
+#: an explicit 'Applied' - including no answer at all - is never presented as done.
+CHANGE_LABEL = (
+    f"if(equals({_OUTCOME}, 'Applied'), outputs('Decide'), "
+    f"concat(outputs('Decide'), "
+    f"if(equals({_OUTCOME}, 'Failed'), ' FAILED - see the O365GCalLog list', "
+    f"if(equals({_OUTCOME}, 'DryRun'), ' (practice mode - nothing was written)', "
+    f"' (outcome not reported)'))))"
+)
