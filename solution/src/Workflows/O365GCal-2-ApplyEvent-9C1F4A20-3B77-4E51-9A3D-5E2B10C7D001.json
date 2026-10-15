@@ -125,7 +125,7 @@
         },
         "Init_GoogleEventId": {
           "runAfter": {
-            "Init_Throttled": [
+            "Init_Outcome": [
               "Succeeded"
             ]
           },
@@ -202,6 +202,14 @@
                   },
                   "parameters/body": "@{json(concat('{\"Title\":\"', variables('RunId'), '\",\"Timestamp\":\"', utcNow(), '\",\"FlowName\":\"2 Apply Event\",\"Level\":\"Info\",\"Operation\":\"Skip\",\"CorrelationKey\":\"', triggerBody()?['text'], '\",\"Message\":\"DRY RUN: would ', triggerBody()?['text_1'], '\"}'))}"
                 }
+              }
+            },
+            "Set_Outcome_DryRun": {
+              "runAfter": {},
+              "type": "SetVariable",
+              "inputs": {
+                "name": "Outcome",
+                "value": "DryRun"
               }
             }
           },
@@ -627,6 +635,15 @@
                     "else": {
                       "actions": {}
                     }
+                  },
+                  "Set_Outcome_Failed": {
+                    "runAfter": {},
+                    "type": "SetVariable",
+                    "description": "Set first and on its own, so a failure to log cannot leave the outcome reading Applied.",
+                    "inputs": {
+                      "name": "Outcome",
+                      "value": "Failed"
+                    }
                   }
                 }
               }
@@ -652,7 +669,8 @@
               "operation": "@{triggerBody()?['text_1']}",
               "googleEventId": "@{variables('GoogleEventId')}",
               "runId": "@{variables('RunId')}",
-              "throttled": "@variables('Throttled')"
+              "throttled": "@variables('Throttled')",
+              "outcome": "@{variables('Outcome')}"
             },
             "schema": {
               "type": "object",
@@ -671,6 +689,9 @@
                 },
                 "throttled": {
                   "type": "boolean"
+                },
+                "outcome": {
+                  "type": "string"
                 }
               }
             }
@@ -690,6 +711,24 @@
                 "name": "Throttled",
                 "type": "boolean",
                 "value": false
+              }
+            ]
+          }
+        },
+        "Init_Outcome": {
+          "runAfter": {
+            "Init_Throttled": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "description": "Applied unless the Catch or practice mode says otherwise. The response is always 200, so this is how the caller learns what happened.",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Outcome",
+                "type": "string",
+                "value": "Applied"
               }
             ]
           }
