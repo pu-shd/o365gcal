@@ -50,7 +50,7 @@ backup: ## Back up the state lists to OneDrive (flow 6) and config locally
 dedup: ## Report duplicate mirrored events (dry run; nothing is deleted)
 	@./scripts/run-flow.sh 7
 
-dedup-apply: ## Delete duplicate mirrored events and rebuild the sync map
+dedup-apply: ## Open flow 7's Run page to delete duplicates (the toggle only works there)
 	@./scripts/run-flow.sh --apply 7
 
 update: ## Graceful in-place upgrade, preserving settings and state

@@ -444,3 +444,18 @@ def test_configure_can_set_what_the_safety_emails_ask_for():
     assert re.search(r"^set_meta maxdelete\s+o3gc_MaxDeletePercent\s+num ", text, re.M)
     order = re.search(r"^ORDER=\((.*)\)", text, re.M).group(1).split()
     assert "maxdelete" in order, "a setting outside ORDER is never shown"
+
+
+def test_apply_does_not_pretend_to_pass_inputs_the_api_drops():
+    """The Flow API's triggers/manual/run discards the request body for a Button
+    trigger - measured 2026-10-15 with three body shapes, every run receiving null -
+    and listCallbackUrl is blocked for Request triggers. So '--apply' used to start a
+    dry run while the person believed they were deleting. It must hand over to the
+    portal, where the Apply toggle is real, instead."""
+    text = (ROOT / "scripts" / "run-flow.sh").read_text()
+    assert '"boolean": true' not in text, "a body the API throws away must not be sent"
+    branch = text[text.index("if (( APPLY )); then"):]
+    branch = branch[:branch.index("\n  fi\n")]
+    assert "make.powerautomate.com/environments/$ENV_ID/flows/$ID/details" in branch
+    assert "Apply deletions" in branch
+    assert "continue" in branch, "--apply must not go on to trigger a dry run"

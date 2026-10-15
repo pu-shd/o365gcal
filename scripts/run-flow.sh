@@ -8,7 +8,7 @@
 #   ./scripts/run-flow.sh 0            trigger flow 0 and wait for the result
 #   ./scripts/run-flow.sh --runs 0     show recent runs of flow 0
 #   ./scripts/run-flow.sh --runs 3 5   recent runs of flows 3 and 5
-#   ./scripts/run-flow.sh --apply 7   flow 7 only: actually delete duplicates
+#   ./scripts/run-flow.sh --apply 7   flow 7 only: open its Run page to delete duplicates
 #   ./scripts/run-flow.sh --detail 3  per-action detail of the NEWEST run
 #   ./scripts/run-flow.sh --failed 3  per-action detail of the newest FAILED run
 #   ./scripts/run-flow.sh --outputs Write_Map_Row 2   one action's outputs, newest run
@@ -34,8 +34,8 @@ APPLY=0
 # from SharePoint means an over-long or unprintable field, and this says which one
 # without putting meeting subjects and bodies on the screen.
 [[ "${1:-}" == "--sizes" ]] && { MODE="sizes"; ACTION="$2"; shift 2 }
-# Only flow 7 reads this. Without it that flow reports what it would do and changes
-# nothing, which is the right default for something that deletes calendar events.
+# Only flow 7 has an Apply toggle, and only its portal Run panel can set it. Without
+# it that flow reports what it would do and changes nothing.
 [[ "${1:-}" == "--apply" ]]  && { APPLY=1;       shift }
 [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && { sed -n '2,15p' "$0"; exit 0 }
 (( $# )) || die "which flow? e.g. ./scripts/run-flow.sh 0"
@@ -353,15 +353,21 @@ PY
 )"
   [[ -n "$TRIGGER" ]] || TRIGGER="manual"
   info "Triggering $LABEL (trigger: $TRIGGER)"
-  BODY='{}'
   if (( APPLY )); then
-    BODY='{"boolean": true}'
-    warn "--apply given: this run will DELETE duplicate Google events."
-    print -n -P "%F{red}?%f Type %Bapply%b to confirm: "
-    read -r reply
-    [[ "$reply" == "apply" ]] || die "not confirmed; nothing was run"
+    # The API's run endpoint discards the request body for a Button trigger, so the
+    # Apply toggle cannot be set from here; sending it anyway started a dry run that
+    # looked like a deletion. The portal's Run panel is the one place it takes effect.
+    PORTAL="https://make.powerautomate.com/environments/$ENV_ID/flows/$ID/details"
+    warn "Deleting duplicates has to be started from the flow's own page:"
+    print "    1. Click Run in the top bar"
+    print "    2. Switch 'Apply deletions' to Yes"
+    print "    3. Click Run flow, then Done"
+    print "  $PORTAL"
+    command -v open >/dev/null 2>&1 && open "$PORTAL"
+    print "  Nothing was run from here. Check the result with: ./scripts/run-flow.sh --runs $n"
+    continue
   fi
-  CODE="$(curl -sS -o "$TMP/trig.json" -w '%{http_code}' -X POST "${FH[@]}" -d "$BODY" \
+  CODE="$(curl -sS -o "$TMP/trig.json" -w '%{http_code}' -X POST "${FH[@]}" -d '{}' \
     "$API/flows/$ID/triggers/$TRIGGER/run?api-version=2016-11-01" || true)"
   if [[ "$CODE" != "200" && "$CODE" != "202" && "$CODE" != "201" ]]; then
     warn "trigger returned HTTP $CODE"
