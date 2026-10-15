@@ -435,3 +435,12 @@ def test_a_missing_or_signed_out_pac_is_reported_not_silent(script, pac, tmp_pat
                        capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=60)
     assert r.returncode != 0, f"{script} succeeded with no usable pac"
     assert "pac" in r.stderr, f"{script} exited {r.returncode} without saying why: {r.stderr!r}"
+
+
+def test_configure_can_set_what_the_safety_emails_ask_for():
+    """The 'mass deletion refused' and 'duplicate cleanup refused' emails both say to
+    raise MaxDeletePercent for one run. That has to be a command, not a portal hunt."""
+    text = (ROOT / "scripts" / "configure.sh").read_text()
+    assert re.search(r"^set_meta maxdelete\s+o3gc_MaxDeletePercent\s+num ", text, re.M)
+    order = re.search(r"^ORDER=\((.*)\)", text, re.M).group(1).split()
+    assert "maxdelete" in order, "a setting outside ORDER is never shown"
