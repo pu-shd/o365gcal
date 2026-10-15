@@ -468,3 +468,16 @@ def test_update_says_why_flows_could_not_be_switched_off():
     line = next(l for l in text.splitlines() if "enable-flows.sh\" --off" in l)
     assert "/dev/null" not in line, line
     assert "could not switch all off" in text
+
+
+def test_configure_restarts_flows_so_a_change_takes_effect():
+    """A flow keeps the environment-variable value it read when it was switched on
+    until it is switched off and on again. configure.sh used to report 'dryrun is now
+    yes' while the reconciler went on writing to Google."""
+    text = (ROOT / "scripts" / "configure.sh").read_text()
+    assert "restart_active_flows" in text.split("\nesac\n", 1)[1], "must run after a change"
+    body = text[text.index("restart_active_flows() {"):]
+    body = body[:body.index("\n}\n")]
+    assert "statecode" in body, "only flows that are on may be switched back on"
+    assert "enable-flows.sh\" --off" in body and "enable-flows.sh\" ${=" in body
+    assert "Changes take effect on the next run" not in text

@@ -209,10 +209,49 @@ if (( $# == 0 )); then
     ./scripts/configure.sh rsvpdays 1        remind me daily about unanswered invites
     ./scripts/configure.sh rsvpdays 0        stop those reminders
 
-  Changes take effect on the next run; no reinstall needed.
+  Flows that are on are switched off and on again so they read the new value.
 HELP
   exit 0
 fi
+
+# A flow reads environment variables when it is switched on and keeps those values
+# until it is switched off and on again, so a change does nothing until then. Only
+# flows that are on now are cycled: one that was off stays off.
+restart_active_flows() {
+  dataverse_get "workflows?\$select=name,statecode&\$filter=category%20eq%205%20and%20startswith(name,%27O365GCal%27)" \
+    "$TMP/flows.json" || true
+  local on
+  on="$(python3 - "$TMP/flows.json" <<'PY'
+import json, sys
+try:
+    rows = json.load(open(sys.argv[1])).get("value", [])
+except Exception:
+    rows = None
+if rows is None:
+    print("UNREADABLE")
+else:
+    print(" ".join(sorted({r["name"].replace("O365GCal ", "")[:1]
+                           for r in rows if r.get("statecode") == 1})))
+PY
+)"
+  if [[ "$on" == "UNREADABLE" ]]; then
+    warn "Could not read which flows are on. Switch them off and on to apply the change:"
+    warn "  ./scripts/enable-flows.sh --off && ./scripts/enable-flows.sh"
+    return 1
+  fi
+  if [[ -z "$on" ]]; then
+    info "No flows are on; they will read the new value when switched on."
+    return 0
+  fi
+  info "Restarting flows $on so they read the new value"
+  if ! "$REPO_ROOT/scripts/enable-flows.sh" --off ${=on} >"$TMP/cycle.log" 2>&1 \
+     || ! "$REPO_ROOT/scripts/enable-flows.sh" ${=on} >>"$TMP/cycle.log" 2>&1; then
+    warn "Restart incomplete - the change may not be in effect yet:"
+    grep -vE "done$|^$" "$TMP/cycle.log" | sed 's/^/      /'
+    return 1
+  fi
+  ok "flows $on restarted"
+}
 
 KEY="$1"; shift
 case "$KEY" in
@@ -235,6 +274,8 @@ case "$KEY" in
     set_value "${SCHEMA[$KEY]}" "$VALUE" && ok "$KEY is now $VALUE"
     ;;
 esac
+
+restart_active_flows
 
 print ""
 print -P "%F{242}  Verify with: ./scripts/configure.sh%f"
