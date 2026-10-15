@@ -51,7 +51,7 @@ Full walkthrough in **[docs/INSTALL.md](docs/INSTALL.md)**.
 | `./scripts/show-state.sh` | Whether the state lists exist and how many rows they hold |
 | `./scripts/run-flow.sh 6` | Back up the state lists to OneDrive on demand |
 | `./scripts/run-flow.sh 7` | Report duplicate mirrored events (dry run) |
-| `./scripts/run-flow.sh --apply 7` | Delete duplicates and rebuild the sync map |
+| `./scripts/run-flow.sh --apply 7` | Open flow 7's Run page to delete duplicates and rebuild the sync map |
 | `./scripts/backup.sh` | Snapshot configuration and flow states locally |
 | `./scripts/restore.sh <dir>` | Rebuild an install from a backup |
 | `./scripts/preflight.sh` | Check the DLP gate before you start |

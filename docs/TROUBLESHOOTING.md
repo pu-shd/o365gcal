@@ -58,8 +58,11 @@ key cap failed this way on long invitation ids. Check the write:
 ./scripts/run-flow.sh --sizes Write_Map_Row 2    # which field was too long
 ```
 
-After updating, `make dedup` and then `make dedup-apply` remove the extra copies and
-rebuild the row under the shortened key.
+After updating, `make dedup` previews the cleanup. `make dedup-apply` opens flow 7's
+Run page: switch **Apply deletions** to Yes there to remove the extra copies and
+rebuild the row under the shortened key. The toggle cannot be set from a script; the
+API drops it. If the preview is refused as too large a share of the mirror,
+`./scripts/configure.sh maxdelete 50` for that one run, then set it back to 25.
 
 For any other duplicates:
 
