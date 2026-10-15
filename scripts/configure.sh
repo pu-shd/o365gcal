@@ -35,8 +35,9 @@ set_meta ahead    o3gc_WindowFutureDays         num  "How many days ahead to mir
 set_meta rsvpdays o3gc_RsvpReminderDays         num  "Days between 'you owe a reply' reminders (0 = never)"
 set_meta rsvphour o3gc_RsvpReminderHour         num  "Hour of day (UTC) those reminders are sent"
 set_meta rsvpdays_horizon o3gc_RsvpHorizonDays  num  "Only remind about invitations within this many days"
+set_meta maxdelete o3gc_MaxDeletePercent         num  "Refuse a delete batch over this percent of the mirror (and over 5 events); normally 25"
 
-ORDER=(dryrun notify private rsvpdays rsvphour calendar source email back ahead prefix site)
+ORDER=(dryrun notify private rsvpdays rsvphour calendar source email back ahead prefix site maxdelete)
 
 ORG="$(org_url)"
 [[ -n "$ORG" ]] || die "not connected to an environment"
