@@ -48,6 +48,21 @@ handle it. Nothing was removed from Google.
 
 ## Duplicate events on Google
 
+**A new copy of one meeting every 15 minutes**, usually an invitation from an outside
+system, means its sync-map row could not be written. Releases before the 255-character
+key cap failed this way on long invitation ids. Check the write:
+
+```zsh
+./scripts/run-flow.sh --detail 2                 # Write_Map_Row failed?
+./scripts/run-flow.sh --outputs Write_Map_Row 2  # SharePoint's own message
+./scripts/run-flow.sh --sizes Write_Map_Row 2    # which field was too long
+```
+
+After updating, `make dedup` and then `make dedup-apply` remove the extra copies and
+rebuild the row under the shortened key.
+
+For any other duplicates:
+
 Should not happen; all writes go through one child flow keyed on `iCalUId`. If it does:
 
 1. Check whether the duplicates are actually a **recurring meeting**. Those are

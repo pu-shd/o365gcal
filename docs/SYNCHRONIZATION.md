@@ -93,8 +93,18 @@ rewrites the event id when a user accepts an invitation, which is the documented
 of the trigger firing twice for one meeting. Keying on `iCalUId` collapses that to a
 single update instead of mirroring the meeting twice.
 
+**Keys are capped at 255 characters**, the most a SharePoint single-line text column
+holds. An invitation sent by an outside system (a training sign-up, a ticketing tool)
+carries that system's UID wrapped in an Exchange header, and its key can run past the
+limit. SharePoint then refused the sync-map row after Google already had the event, so
+every run created another copy. Over-long keys keep their **last** 255 characters: the
+start time and the outside system's UID are at the end, the fixed header at the front.
+Every key that already fitted is unchanged.
+
 *Held by:* `test_recurring_occurrences_are_independent`,
-`test_accept_invitation_double_fire_collapses`
+`test_accept_invitation_double_fire_collapses`,
+`test_correlation_key_fits_a_sharepoint_text_column`,
+`test_correlation_key_is_unchanged_when_it_already_fits`
 
 ---
 

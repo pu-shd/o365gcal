@@ -1,12 +1,14 @@
 """The hash is what keeps the reconciler inside Google's 100-calls/60s budget, so
 its stability under irrelevant change is the single most important property here."""
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from conftest import make_event
 from o365gcal.model import ResponseType, Sensitivity
 from o365gcal.normalize import (
+    KEY_MAX_CHARS,
+    bound_key,
     content_hash,
     correlation_key,
     iso_utc,
@@ -187,3 +189,58 @@ def test_default_config_applies_no_prefix(event):
     from o365gcal.normalize import effective_subject
 
     assert effective_subject(event, Config()) == event.subject
+
+
+def _wrapped_uid(external_uid: str) -> str:
+    """An iCalUId the way Exchange stores an invitation sent by an outside system:
+    a fixed header, then `vCal-Uid`, then the sender's own UID, all hex-encoded. The
+    distinguishing part is at the end, and the length grows with the sender's UID."""
+    data = b"vCal-Uid\x01\x00\x00\x00" + external_uid.encode() + b"\x00"
+    return ("040000008200E00074C5B7101A82E008" + "0" * 40 + f"{len(data):08X}"
+            + data.hex().upper())
+
+
+#: Measured 2026-10-15: an IT@Princeton training-approval invitation whose iCalUId is
+#: 236 characters, making a 257-character key that SharePoint refused to store.
+LONG_UID = _wrapped_uid("approval-" + "a1b2c3d4" * 3 + "a1b2c3" + "@princeton.service-now.com")
+
+
+def test_long_uid_fixture_matches_the_one_seen_in_production():
+    assert len(LONG_UID) == 236
+
+
+def test_correlation_key_fits_a_sharepoint_text_column():
+    """Title is single-line text: 255 characters, and SharePoint rejects anything
+    longer with 'Invalid text value'. Google already holds the event by then, so the
+    next run creates it again - a new copy every 15 minutes."""
+    start = datetime(2026, 10, 21, 13, 30, tzinfo=timezone.utc)
+    key = correlation_key(LONG_UID, start)
+    assert len(key) <= KEY_MAX_CHARS == 255
+    assert key.endswith("|2026-10-21T13:30:00Z"), "the start time must survive intact"
+
+
+def test_correlation_key_is_unchanged_when_it_already_fits():
+    """Every row written before the limit existed must still be found, or the whole
+    calendar would be re-created."""
+    start = datetime(2026, 10, 21, 13, 30, tzinfo=timezone.utc)
+    uid = "U" * (KEY_MAX_CHARS - len("|2026-10-21T13:30:00Z"))
+    assert correlation_key(uid, start) == f"{uid}|2026-10-21T13:30:00Z"
+
+
+def test_shortened_keys_still_tell_meetings_apart():
+    """The header is dropped, not the sender's UID: two invitations from the same
+    system differ only near the end."""
+    start = datetime(2026, 10, 21, 13, 30, tzinfo=timezone.utc)
+    a = LONG_UID
+    b = _wrapped_uid("approval-" + "a1b2c3d4" * 3 + "ffffff" + "@princeton.service-now.com")
+    assert correlation_key(a, start) != correlation_key(b, start)
+    later = datetime(2026, 10, 28, 13, 30, tzinfo=timezone.utc)
+    assert correlation_key(a, start) != correlation_key(a, later)
+
+
+def test_bounding_an_already_bounded_key_changes_nothing():
+    """Dedup reads keys back out of descriptions, some written before the limit."""
+    start = datetime(2026, 10, 21, 13, 30, tzinfo=timezone.utc)
+    full = f"{LONG_UID}|2026-10-21T13:30:00Z"
+    assert bound_key(full) == correlation_key(LONG_UID, start)
+    assert bound_key(bound_key(full)) == bound_key(full)

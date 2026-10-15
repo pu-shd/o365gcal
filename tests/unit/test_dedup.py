@@ -13,7 +13,7 @@ from o365gcal.dedup import (
     time_slices,
 )
 from o365gcal.model import Config, MapRow, SyncState
-from o365gcal.normalize import MARKER_PREFIX
+from o365gcal.normalize import MARKER_PREFIX, bound_key
 
 NOW = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
 
@@ -234,3 +234,19 @@ def test_marker_parsing_tolerates_surrounding_text(config):
         description=f"line one\nline two\n\n{MARKER_PREFIX}   {KEY}   \ntrailing",
     )
     assert ev.marker_key == KEY
+
+
+def test_copies_made_before_the_key_limit_group_under_the_bounded_key(config):
+    """Copies created while the key was too long to store carry the long form in their
+    description. Dedup must file them under the key the reconciler now uses, so the
+    survivor's rebuilt row is the one the next reconcile finds - instead of a row
+    SharePoint refuses, followed by one more copy."""
+    long_key = "U" * 236 + "|2026-10-21T13:30:00Z"
+    events = [GoogleEvent(id=f"g{i}", description=f"{MARKER_PREFIX} {long_key}")
+              for i in range(4)]
+    plan = build_dedup_plan(events, [], config)
+    assert len(plan.duplicates) == 1
+    assert plan.duplicates[0].key == bound_key(long_key)
+    assert len(plan.duplicates[0].delete) == 3
+    assert [r.correlation_key for r in plan.map_repairs] == [bound_key(long_key)]
+    assert len(plan.map_repairs[0].correlation_key) <= 255

@@ -11,7 +11,16 @@ import pytest
 from o365gcal import expressions as x
 from o365gcal.model import Config, ResponseType
 from o365gcal.diff import build_plan
-from o365gcal.normalize import body_fingerprint, content_hash, correlation_key, iso_utc
+from o365gcal.dedup import GoogleEvent
+from o365gcal.normalize import (
+    KEY_MAX_CHARS,
+    MARKER_PREFIX,
+    body_fingerprint,
+    bound_key,
+    content_hash,
+    correlation_key,
+    iso_utc,
+)
 from conftest import make_event, make_row
 from wdl import Evaluator, WdlError
 
@@ -57,7 +66,11 @@ def test_body_fingerprint_matches_engine(preview):
         ("abc", "2026-09-01T14:00:00Z"),
         ("040000008200E00074C5B7101A82E008", "2026-12-31T23:30:00Z"),
         ("uid-with-dashes", "2026-03-08T07:00:00Z"),
+        ("U" * 234, "2026-10-21T13:30:00Z"),
+        ("U" * 235 + "V", "2026-10-21T13:30:00Z"),
+        ("040000008200E008" + "A1" * 200, "2026-10-21T13:30:00Z"),
     ],
+    ids=["short", "exchange", "dashes", "exactly-fits", "one-over", "far-over"],
 )
 def test_correlation_key_matches_engine(uid, start):
     parsed = datetime.fromisoformat(start.replace("Z", "+00:00"))
@@ -324,10 +337,24 @@ def test_standalone_fingerprint_matches_the_compose_chain(hide, config):
         assert hoisted == chained, f"{subject} under hide={hide}"
 
 
-def test_standalone_key_matches_the_engine(config):
-    event = make_event("Standup")
+@pytest.mark.parametrize("uid", ["uid-standup", "040000008200E008" + "A1" * 110],
+                         ids=["short", "over-limit"])
+def test_standalone_key_matches_the_engine(uid, config):
+    event = make_event("Standup", ical_uid=uid)
     got = _standalone_eval(x.KEY_INLINE, event, config)
     assert got == correlation_key(event.ical_uid, event.start_utc)
+    assert len(got) <= KEY_MAX_CHARS
+
+
+@pytest.mark.parametrize("key", ["uid|2026-10-21T13:30:00Z",
+                                 "U" * 236 + "|2026-10-21T13:30:00Z"],
+                         ids=["short", "written-before-the-limit"])
+def test_dedup_marker_key_matches_engine(key):
+    """Flow 7 reads keys back out of Google descriptions. Copies made before the limit
+    carry the long form, and must group under the key the reconciler now looks up."""
+    description = f"Agenda\n\n{MARKER_PREFIX} {key}"
+    got = ev({"description": description}).eval(x.marker_key("item()?['description']"))
+    assert got == GoogleEvent(id="g", description=description).marker_key == bound_key(key)
 
 
 def _pairs_for(rows):

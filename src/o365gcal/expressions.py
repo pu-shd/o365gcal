@@ -37,8 +37,24 @@ def iso_utc(expr: str) -> str:
     return f"formatDateTime({expr}, 'yyyy-MM-ddTHH:mm:ss\\Z')"
 
 
+def bound_key(key_expr: str) -> str:
+    """The last 255 characters, as `normalize.bound_key` keeps them.
+
+    WDL has no negative index, so the start offset is computed. `key_expr` appears
+    three times; pass something cheap to evaluate.
+    """
+    return (f"substring({key_expr}, max(0, sub(length({key_expr}), 255)), "
+            f"min(length({key_expr}), 255))")
+
+
 def correlation_key(uid_expr: str, start_expr: str) -> str:
-    return f"concat({uid_expr}, '|', {iso_utc(start_expr)})"
+    return bound_key(f"concat({uid_expr}, '|', {iso_utc(start_expr)})")
+
+
+def marker_key(description_expr: str) -> str:
+    """The key after the marker in a mirrored description, bounded so that copies made
+    before the limit group under the key the reconciler uses now."""
+    return bound_key(f"trim(last(split(coalesce({description_expr}, ''), 'o365gcal-key:')))")
 
 
 #: Line-ending and tab flattening, expressed without regex (which WDL does not have).
@@ -343,9 +359,7 @@ HIDDEN_INLINE = "and(equals({p}, true), contains(createArray('private','confiden
 )
 
 #: The correlation key, likewise.
-KEY_INLINE = "concat(coalesce(item()?['iCalUId'], ''), '|', {})".format(
-    iso_utc("item()?['startWithTimeZone']")
-)
+KEY_INLINE = correlation_key("coalesce(item()?['iCalUId'], '')", "item()?['startWithTimeZone']")
 
 
 def standalone(expr: str) -> str:

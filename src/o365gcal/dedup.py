@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from .model import Config, MapRow, SyncState
-from .normalize import MARKER_PREFIX
+from .normalize import MARKER_PREFIX, bound_key
 
 #: The marker as it appears in a rendered description.
 _MARKER = re.compile(
@@ -52,7 +52,9 @@ class GoogleEvent:
     def marker_key(self) -> str | None:
         """The correlation key this event was created for, or None if unmarked."""
         m = _MARKER.search(self.description or "")
-        return m.group(1) if m else None
+        # Copies made before keys were bounded carry the long form; file them under
+        # the key the reconciler now looks up.
+        return bound_key(m.group(1)) if m else None
 
 
 @dataclass

@@ -108,13 +108,30 @@ def normalize_attendees(required: str, optional: str) -> str:
     return f"{(required or '').strip().lower()};{(optional or '').strip().lower()}"
 
 
+#: The sync map's Title column holds the key, and SharePoint single-line text holds
+#: 255 characters. A longer write fails with "Invalid text value" after Google already
+#: has the event, so the next run creates it again.
+KEY_MAX_CHARS = 255
+
+
+def bound_key(key: str) -> str:
+    """The last `KEY_MAX_CHARS` characters of a key.
+
+    The end is kept because that is where keys differ. The start time sits there, and
+    an iCalUId that Exchange wrapped around an outside system's UID is a fixed header
+    followed by that UID. Every key that already fits is returned unchanged, so rows
+    written before the limit existed are still found.
+    """
+    return key[-KEY_MAX_CHARS:]
+
+
 def correlation_key(ical_uid: str, occurrence_start: datetime) -> str:
-    """Stable identity of one mirrored occurrence: `{iCalUId}|{startUtc}`.
+    """Stable identity of one mirrored occurrence: `{iCalUId}|{startUtc}`, bounded.
 
     All occurrences of a series share an `iCalUId`, so the start time is what
     separates them. This survives the event-id rewrite on invitation acceptance.
     """
-    return f"{ical_uid}|{iso_utc(occurrence_start)}"
+    return bound_key(f"{ical_uid}|{iso_utc(occurrence_start)}")
 
 
 #: TitlePrefix sentinel meaning "no prefix". An empty default cannot be resolved by
